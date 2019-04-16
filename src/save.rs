@@ -44,16 +44,16 @@ pub struct Color(u32);
 
 impl Color {
     pub fn from_rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self(u32::from(r) | (u32::from(g) << 8) | (u32::from(b) << 16) | (u32::from(a) << 24))
+        Self(u32::from(b) | (u32::from(g) << 8) | (u32::from(r) << 16) | (u32::from(a) << 24))
     }
     pub fn r(self) -> u8 {
-        (self.0 & 0xff) as u8
+        ((self.0 >> 16) & 0xff) as u8
     }
     pub fn g(self) -> u8 {
         ((self.0 >> 8) & 0xff) as u8
     }
     pub fn b(self) -> u8 {
-        ((self.0 >> 16) & 0xff) as u8
+        (self.0 & 0xff) as u8
     }
     pub fn a(self) -> u8 {
         ((self.0 >> 24) & 0xff) as u8
