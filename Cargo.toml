@@ -4,9 +4,10 @@ version = "0.1.0"
 authors = ["ns <portification@gmail.com>"]
 edition = "2018"
 description = "Read and write Brickadia save files."
+readme = "README.md"
 keywords = ["brickadia", "parser", "file", "binary"]
 categories = ["encoding"]
-readme = "README.md"
+license = "MIT"
 
 [dependencies]
 byteorder = "1"
