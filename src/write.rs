@@ -6,7 +6,10 @@ use crate::{
 use byteorder::{BigEndian, ByteOrder, LittleEndian, WriteBytesExt};
 use chrono::prelude::*;
 use libflate::zlib;
-use std::io::{self, prelude::*};
+use std::{
+	convert::TryFrom,
+	io::{self, prelude::*},
+};
 use uuid::Uuid;
 
 const LATEST_VERSION: u16 = 4;
@@ -251,7 +254,12 @@ fn write_uuid(w: &mut impl Write, uuid: &Uuid) -> io::Result<()> {
 
 fn write_date_time(w: &mut impl Write, date_time: DateTime<Utc>) -> io::Result<()> {
 	let duration = date_time - ue4_date_time_base();
-	w.write_i64::<LittleEndian>(duration.num_nanoseconds().unwrap_or(i64::max_value()) / 100)
+	let duration = duration
+		.to_std()
+		.unwrap_or(std::time::Duration::from_secs(0));
+	let ticks_secs = i64::try_from(duration.as_secs() * 10_000_000).unwrap();
+	let ticks_nanos = i64::from(duration.subsec_nanos() / 100);
+	w.write_i64::<LittleEndian>(ticks_secs + ticks_nanos)
 }
 
 /// Combines a direction and rotation into their corresponding packed orientation.
