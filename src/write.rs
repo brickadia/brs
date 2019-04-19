@@ -1,6 +1,6 @@
 use crate::{
 	bit_writer::BitWriter,
-	save::{Brick, Color, ColorMode, User},
+	save::{Brick, Color, ColorMode, Direction, Rotation, User},
 	ue4_date_time_base, MAGIC,
 };
 use byteorder::{BigEndian, ByteOrder, LittleEndian, WriteBytesExt};
@@ -255,6 +255,6 @@ fn write_date_time(w: &mut impl Write, date_time: DateTime<Utc>) -> io::Result<(
 }
 
 /// Combines a direction and rotation into their corresponding packed orientation.
-fn combine_orientation(direction: u8, rotation: u8) -> u8 {
-	(direction << 2) | rotation
+fn combine_orientation(direction: Direction, rotation: Rotation) -> u8 {
+	(u8::from(direction) << 2) | u8::from(rotation)
 }

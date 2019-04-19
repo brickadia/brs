@@ -1,3 +1,4 @@
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::fmt;
 use uuid::Uuid;
 
@@ -14,8 +15,8 @@ pub struct Brick {
     pub asset_name_index: u32,
     pub size: (u32, u32, u32),
     pub position: (i32, i32, i32),
-    pub direction: u8,
-    pub rotation: u8,
+    pub direction: Direction,
+    pub rotation: Rotation,
     pub collision: bool,
     pub visibility: bool,
     pub material_index: u32,
@@ -23,12 +24,27 @@ pub struct Brick {
     pub owner_index: u32,
 }
 
-pub const DIRECTION_X_POSITIVE: u8 = 0;
-pub const DIRECTION_X_NEGATIVE: u8 = 1;
-pub const DIRECTION_Y_POSITIVE: u8 = 2;
-pub const DIRECTION_Y_NEGATIVE: u8 = 3;
-pub const DIRECTION_Z_POSITIVE: u8 = 4;
-pub const DIRECTION_Z_NEGATIVE: u8 = 5;
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, TryFromPrimitive)]
+pub enum Direction {
+    XPositive,
+    XNegative,
+    YPositive,
+    YNegative,
+    ZPositive,
+    ZNegative,
+}
+
+#[repr(u8)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, IntoPrimitive, TryFromPrimitive,
+)]
+pub enum Rotation {
+    Deg0,
+    Deg90,
+    Deg180,
+    Deg270,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ColorMode {

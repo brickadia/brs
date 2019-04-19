@@ -13,3 +13,7 @@ byteorder = "1"
 libflate = "0.1"
 uuid = "0.7"
 chrono = "0.4"
+
+[dependencies.num_enum]
+git = "https://github.com/qoh/num_enum"
+rev = "672483a21e88b9a8cb8937b117b032137d9035c9"

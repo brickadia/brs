@@ -1,12 +1,15 @@
 use crate::{
     bit_reader::BitReader,
-    save::{Brick, Color, ColorMode, User},
+    save::{Brick, Color, ColorMode, Direction, Rotation, User},
     ue4_date_time_base, MAGIC,
 };
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use chrono::{prelude::*, Duration};
 use libflate::zlib;
-use std::io::{self, prelude::*, Cursor};
+use std::{
+    convert::TryInto,
+    io::{self, prelude::*, Cursor},
+};
 use uuid::Uuid;
 
 const MAX_VERSION: u16 = 4;
@@ -504,6 +507,8 @@ fn brick_owner(r: &mut impl Read) -> io::Result<User> {
 }
 
 /// Splits a packed orientation into its corresponding direction and rotation.
-fn split_orientation(orientation: u8) -> (u8, u8) {
-    (orientation >> 2, orientation & 0b11)
+fn split_orientation(orientation: u8) -> (Direction, Rotation) {
+    let direction = ((orientation >> 2) % 6).try_into().unwrap();
+    let rotation = (orientation & 0b11).try_into().unwrap();
+    (direction, rotation)
 }
