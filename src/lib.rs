@@ -27,7 +27,7 @@
 //! [`HasHeader1`](read/trait.HasHeader1.html).
 //!
 //! ```rust
-//! use brs::read::HasHeader1;
+//! use brs::HasHeader1;
 //! let reader = reader.read_header1();
 //! println!("Brick count: {}", reader.brick_count());
 //! println!("Map: {}", reader.map());
@@ -38,7 +38,7 @@
 //! See [`HasHeader2`](read/trait.HasHeader2.html).
 //!
 //! ```rust
-//! use brs::read::HasHeader2;
+//! use brs::HasHeader2;
 //! let reader = reader.read_header2();
 //! println!("Mods: {:?}", reader.mods());
 //! println!("Color count: {}", reader.colors().len());
