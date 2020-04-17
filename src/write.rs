@@ -11,10 +11,12 @@ use std::{
 	io::{self, prelude::*},
 };
 use uuid::Uuid;
+use serde::{Serialize, Deserialize};
 
 const LATEST_VERSION: u16 = 4;
 
 /// Data written to save files by [`write_save`](fn.write_save.html).
+#[derive(Serialize, Deserialize)]
 pub struct WriteData {
 	// Header 1
 	/// The name of the map that the save file was created on.

@@ -1,6 +1,7 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::fmt;
 use uuid::Uuid;
+use serde::{Serialize, Deserialize};
 
 /// A single brick in a save file.
 ///
@@ -10,7 +11,7 @@ use uuid::Uuid;
 ///
 /// `size` is used for procedural bricks. For fixed size brick assets, it's
 /// more efficient to use `(0, 0, 0)` (the file will be smaller).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Brick {
     pub asset_name_index: u32,
     pub size: (u32, u32, u32),
@@ -25,7 +26,9 @@ pub struct Brick {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, TryFromPrimitive)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, TryFromPrimitive, Serialize, Deserialize
+)]
 pub enum Direction {
     XPositive,
     XNegative,
@@ -37,7 +40,7 @@ pub enum Direction {
 
 #[repr(u8)]
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, IntoPrimitive, TryFromPrimitive,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, IntoPrimitive, TryFromPrimitive, Serialize, Deserialize
 )]
 pub enum Rotation {
     Deg0,
@@ -46,7 +49,7 @@ pub enum Rotation {
     Deg270,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ColorMode {
     /// A color from the color lookup table.
     Set(u32),
@@ -55,7 +58,7 @@ pub enum ColorMode {
 }
 
 /// Represents a RGBA color.
-#[derive(Clone, Copy, PartialEq, Hash)]
+#[derive(Clone, Copy, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Color(u32);
 
 impl Color {
@@ -101,7 +104,7 @@ impl fmt::Debug for Color {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct User {
     pub id: Uuid,
     pub name: String,
