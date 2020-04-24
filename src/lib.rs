@@ -93,7 +93,7 @@
 //!     colors: vec![todo!()],
 //!     materials: vec![todo!()],
 //!     brick_owners: Vec::new(),
-//! 
+//!
 //!     bricks: Vec::new(),
 //! };
 //! brs::write_save(&mut File::create("park.brs")?, &data)?;
