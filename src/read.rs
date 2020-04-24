@@ -373,12 +373,19 @@ impl ReadBricks {
         } else {
             ColorMode::Custom(self.r.read_u32::<LittleEndian>()?.into())
         };
+
         let owner_index = if self.version >= 3 {
             self.r.read_int_packed()
         } else {
             0
         };
+        let owner_index = match owner_index {
+            0 => None,
+            n => Some(n - 1),
+        };
+
         let (direction, rotation) = split_orientation(orientation);
+
         Ok(Brick {
             asset_name_index,
             size,

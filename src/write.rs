@@ -121,7 +121,10 @@ pub fn write_save(w: &mut impl Write, data: &WriteData) -> io::Result<()> {
 			}
 		}
 
-		s.write_int_packed(brick.owner_index)?;
+		s.write_int_packed(match brick.owner_index {
+			None => 0,
+			Some(i) => i + 1,
+		})?;
 	}
 	s.finish()?.finish(w)?;
 

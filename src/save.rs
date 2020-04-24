@@ -21,7 +21,7 @@ pub struct Brick {
     pub visibility: bool,
     pub material_index: u32,
     pub color: ColorMode,
-    pub owner_index: u32,
+    pub owner_index: Option<u32>,
 }
 
 #[repr(u8)]
