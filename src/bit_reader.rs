@@ -28,7 +28,6 @@ impl BitReader {
             let shift = bit & 7;
             *byte = (*byte & !(1 << shift)) | (u8::from(self.read_bit()) << shift);
         }
-        self.pos += len;
     }
 
     // SerializeInt
