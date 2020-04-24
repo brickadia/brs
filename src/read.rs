@@ -22,8 +22,11 @@ pub struct Reader<R: Read> {
 impl<R: Read> Reader<R> {
     /// Create a new reader that reads from `r`.
     ///
-    /// ```rust
+    /// ```no_run
+    /// # use std::fs::File;
+    /// # use brs::Reader;
     /// let reader = Reader::new(File::open("village.brs")?)?;
+    /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn new(mut r: R) -> io::Result<Self> {
         let mut magic = [0; 3];
@@ -49,8 +52,10 @@ impl<R: Read> Reader<R> {
     /// Continue parsing to read the first header.
     /// See [`HasHeader1`](trait.HasHeader1.html) for what it makes available.
     ///
-    /// ```rust
+    /// ```no_run
+    /// # let reader: brs::Reader<std::fs::File> = unimplemented!();
     /// let reader = reader.read_header1()?;
+    /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn read_header1(mut self) -> io::Result<ReaderAfterHeader1<R>> {
         let header1 = read_header1(&mut read_compressed(&mut self.r)?, self.version)?;
@@ -71,8 +76,10 @@ impl<R: Read> ReaderAfterHeader1<R> {
     /// Continue parsing to read the second header.
     /// See [`HasHeader1`](trait.HasHeader2.html) for what it makes available.
     ///
-    /// ```rust
+    /// ```no_run
+    /// # let reader: brs::read::ReaderAfterHeader1<std::fs::File> = unimplemented!();
     /// let reader = reader.read_header2()?;
+    /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn read_header2(mut self) -> io::Result<ReaderAfterHeader2<R>> {
         let header2 = read_header2(
@@ -97,10 +104,12 @@ impl<R: Read> ReaderAfterHeader2<R> {
     /// Begin parsing the bricks and return an iterator over them.
     /// Consumes the reader.
     ///
-    /// ```rust
+    /// ```no_run
+    /// # let reader: brs::read::ReaderAfterHeader2<std::fs::File> = unimplemented!();
     /// for brick in reader.iter_bricks()? {
     ///     let brick = brick?;
     /// }
+    /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn iter_bricks(mut self) -> io::Result<ReadBricks> {
         let rdr = &mut self.inner.inner;
@@ -117,12 +126,16 @@ impl<R: Read> ReaderAfterHeader2<R> {
     /// Begin parsing the bricks and return an iterator over them,
     /// along with a finished reader that has header 1 and 2 data.
     ///
-    /// ```rust
+    /// ```no_run
+    /// # let reader: brs::Reader<std::fs::File> = unimplemented!();
+    /// # let reader = reader.read_header1()?;
+    /// # let reader = reader.read_header2()?;
     /// let (rdr, bricks) = reader.iter_bricks_and_reader()?;
     ///
     /// for brick in bricks {
     ///     let brick = brick?;
     /// }
+    /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn iter_bricks_and_reader(mut self) -> io::Result<(ReaderAfterBricks, ReadBricks)> {
         let rdr = &mut self.inner.inner;
@@ -144,9 +157,12 @@ impl<R: Read> ReaderAfterHeader2<R> {
     /// for use with [`write_save`](../fn.write_save.html),
     /// which can be used to write a save file with identical content.
     ///
-    /// ```rust
+    /// ```no_run
+    /// # use std::fs::File;
+    /// # let reader: brs::read::ReaderAfterHeader2<File> = unimplemented!();
     /// let data = reader.into_write_data()?;
     /// brs::write_save(&mut File::create("park.brs")?, &data)?;
+    /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn into_write_data(self) -> io::Result<crate::WriteData> {
         let (reader, bricks_iter) = self.iter_bricks_and_reader()?;

@@ -11,8 +11,10 @@
 //! [`Read`](https://doc.rust-lang.org/std/io/trait.Read.html)
 //! source, such as a file or buffer.
 //!
-//! ```rust
+//! ```no_run
+//! # use std::fs::File;
 //! let reader = brs::Reader::new(File::open("village.brs")?)?;
+//! # Ok::<(), std::io::Error>(())
 //! ```
 //!
 //! Brickadia save files have information split into sections ordered
@@ -26,40 +28,49 @@
 //! For details on what is available, see
 //! [`HasHeader1`](read/trait.HasHeader1.html).
 //!
-//! ```rust
+//! ```no_run
 //! use brs::HasHeader1;
-//! let reader = reader.read_header1();
+//! # let reader: brs::Reader<std::fs::File> = unimplemented!();
+//! let reader = reader.read_header1()?;
 //! println!("Brick count: {}", reader.brick_count());
 //! println!("Map: {}", reader.map());
+//! # Ok::<(), std::io::Error>(())
 //! ```
 //!
 //! The next header contains data less likely to be relevant for simpler
 //! introspection, but rather things such as tables for loading bricks.
 //! See [`HasHeader2`](read/trait.HasHeader2.html).
 //!
-//! ```rust
+//! ```no_run
 //! use brs::HasHeader2;
-//! let reader = reader.read_header2();
+//! # let reader: brs::read::ReaderAfterHeader1<std::fs::File> = unimplemented!();
+//! let reader = reader.read_header2()?;
 //! println!("Mods: {:?}", reader.mods());
 //! println!("Color count: {}", reader.colors().len());
 //! // Properties from header 1 are still available:
-//! println!("Description: {}", reader.description();
+//! use brs::HasHeader1;
+//! println!("Description: {}", reader.description());
+//! # Ok::<(), std::io::Error>(())
 //! ```
 //!
 //! After both headers have been read, you may now iterate over the bricks.
 //! See [`Brick`](struct.Brick.html).
 //!
-//! ```rust
+//! ```no_run
+//! # let reader: brs::read::ReaderAfterHeader2<std::fs::File> = unimplemented!();
 //! for brick in reader.iter_bricks()? {
 //!     let brick = brick?;
 //!     println!("{:?}", brick);
 //! }
+//! # Ok::<(), std::io::Error>(())
 //! ```
 //!
 //! You may retain access to the header information while getting the iterator:
 //!
-//! ```rust
-//! let (rdr, bricks) = reader.iter_bricks_and_reader()?;
+//! ```no_run
+//! # let reader: brs::read::ReaderAfterHeader2<std::fs::File> = unimplemented!();
+//! let (reader, bricks) = reader.iter_bricks_and_reader()?;
+//! # Ok::<(), std::io::Error>(())
 //! ```
 //!
 //! ## Writing
@@ -69,13 +80,24 @@
 //! [`write_save`](fn.write_save.html) along with a
 //! [`Write`](https://doc.rust-lang.org/std/io/trait.Write.html) destination.
 //!
-//! ```rust
+//! ```no_run
+//! # use std::fs::File;
 //! let data = brs::WriteData {
-//!     map: String::from("Plate"),
-//!     description: String::from("A quaint park full of ducks and turkeys."),
-//!     // ...
+//!     map: "Plate".to_string(),
+//!     author: todo!(),
+//!     description: "A quaint park full of ducks and turkeys.".to_string(),
+//!     save_time: chrono::Utc::now(),
+//!     
+//!     mods: Vec::new(),
+//!     brick_assets: vec!["PB_DefaultBrick".to_string()],
+//!     colors: vec![todo!()],
+//!     materials: vec![todo!()],
+//!     brick_owners: Vec::new(),
+//! 
+//!     bricks: Vec::new(),
 //! };
 //! brs::write_save(&mut File::create("park.brs")?, &data)?;
+//! # Ok::<(), std::io::Error>(())
 //! ```
 
 mod bit_reader;
