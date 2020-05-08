@@ -1,7 +1,7 @@
 use crate::{
     bit_reader::BitReader,
     save::{Brick, Color, ColorMode, Direction, Rotation, User},
-    ue4_date_time_base, MAGIC, Version,
+    ue4_date_time_base, Version, MAGIC,
 };
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use chrono::{prelude::*, Duration};
@@ -37,19 +37,20 @@ impl<R: Read> Reader<R> {
             ));
         }
 
-        let version: Version = r.read_u16::<LittleEndian>()?
+        let version: Version = r
+            .read_u16::<LittleEndian>()?
             .try_into()
-            .map_err(|_|
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Unsupported version",
-            ))?;
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Unsupported version"))?;
 
         // TODO: Consider providing the first or last game version
         // that used this save version
         let game_version = 3642;
 
-        Ok(Reader { r, version, game_version })
+        Ok(Reader {
+            r,
+            version,
+            game_version,
+        })
     }
 
     /// Continue parsing to read the first header.
@@ -85,10 +86,7 @@ impl<R: Read> ReaderAfterHeader1<R> {
     /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn read_header2(mut self) -> io::Result<ReaderAfterHeader2<R>> {
-        let header2 = read_header2(
-            &mut read_compressed(&mut self.inner.r)?,
-            self.inner.version,
-        )?;
+        let header2 = read_header2(&mut read_compressed(&mut self.inner.r)?, self.inner.version)?;
 
         Ok(ReaderAfterHeader2 {
             inner: self,

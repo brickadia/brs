@@ -117,8 +117,8 @@ pub use write::{write_save, WriteData};
 pub use chrono;
 pub use uuid;
 
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 use chrono::prelude::*;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 const MAGIC: [u8; 3] = [b'B', b'R', b'S'];
 
