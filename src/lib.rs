@@ -117,9 +117,23 @@ pub use write::{write_save, WriteData};
 pub use chrono;
 pub use uuid;
 
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use chrono::prelude::*;
 
 const MAGIC: [u8; 3] = [b'B', b'R', b'S'];
+
+/// A save file version.
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, IntoPrimitive, TryFromPrimitive)]
+pub enum Version {
+    Initial = 1,
+    MaterialsStoredAsNames,
+    AddedOwnerData,
+    AddedDateTime,
+}
+
+/// The version that will be written.
+pub const VERSION_WRITE: Version = Version::AddedDateTime;
 
 fn ue4_date_time_base() -> DateTime<Utc> {
     Utc.ymd(1, 1, 1).and_hms(0, 0, 0)

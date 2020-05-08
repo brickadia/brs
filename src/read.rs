@@ -1,7 +1,7 @@
 use crate::{
     bit_reader::BitReader,
     save::{Brick, Color, ColorMode, Direction, Rotation, User},
-    ue4_date_time_base, MAGIC,
+    ue4_date_time_base, MAGIC, Version,
 };
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use chrono::{prelude::*, Duration};
@@ -12,11 +12,10 @@ use std::{
 };
 use uuid::Uuid;
 
-const MAX_VERSION: u16 = 4;
-
 pub struct Reader<R: Read> {
     r: R,
-    version: u16,
+    version: Version,
+    game_version: u32,
 }
 
 impl<R: Read> Reader<R> {
@@ -38,15 +37,19 @@ impl<R: Read> Reader<R> {
             ));
         }
 
-        let version = r.read_u16::<LittleEndian>()?;
-        if version > MAX_VERSION {
-            return Err(io::Error::new(
+        let version: Version = r.read_u16::<LittleEndian>()?
+            .try_into()
+            .map_err(|_|
+            io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Unsupported version",
-            ));
-        }
+            ))?;
 
-        Ok(Reader { r, version })
+        // TODO: Consider providing the first or last game version
+        // that used this save version
+        let game_version = 3642;
+
+        Ok(Reader { r, version, game_version })
     }
 
     /// Continue parsing to read the first header.
@@ -85,7 +88,6 @@ impl<R: Read> ReaderAfterHeader1<R> {
         let header2 = read_header2(
             &mut read_compressed(&mut self.inner.r)?,
             self.inner.version,
-            &self.header1.author,
         )?;
 
         Ok(ReaderAfterHeader2 {
@@ -195,6 +197,7 @@ pub struct Header1 {
     pub map: String,
     pub author: User,
     pub description: String,
+    pub host: Option<User>,
     pub save_time: Option<DateTime<Utc>>,
     pub brick_count: i32,
 }
@@ -288,16 +291,20 @@ impl HasHeader2 for ReaderAfterBricks {
     }
 }
 
-fn read_header1(r: &mut impl Read, version: u16) -> io::Result<Header1> {
+fn read_header1(r: &mut impl Read, version: Version) -> io::Result<Header1> {
     let map = string(r)?;
     let author_name = string(r)?;
     let description = string(r)?;
     let author_id = uuid(r)?;
-    let save_time = if version >= 4 {
+
+    let host = None;
+
+    let save_time = if version >= Version::AddedDateTime {
         Some(date_time(r)?)
     } else {
         None
     };
+
     let brick_count = r.read_i32::<LittleEndian>()?;
 
     Ok(Header1 {
@@ -307,16 +314,18 @@ fn read_header1(r: &mut impl Read, version: u16) -> io::Result<Header1> {
             name: author_name,
         },
         description,
+        host,
         save_time,
         brick_count,
     })
 }
 
-fn read_header2(r: &mut impl Read, version: u16, author: &User) -> io::Result<Header2> {
+fn read_header2(r: &mut impl Read, version: Version) -> io::Result<Header2> {
     let mods = array(r, string)?;
     let brick_assets = array(r, string)?;
     let colors = array(r, |r| r.read_u32::<LittleEndian>().map(Into::into))?;
-    let materials = if version >= 2 {
+
+    let materials = if version >= Version::MaterialsStoredAsNames {
         array(r, string)?
     } else {
         vec!["BMC_Hologram", "BMC_Plastic", "BMC_Glow", "BMC_Metallic"]
@@ -324,10 +333,11 @@ fn read_header2(r: &mut impl Read, version: u16, author: &User) -> io::Result<He
             .map(String::from)
             .collect()
     };
-    let brick_owners = if version >= 3 {
-        array(r, brick_owner)?
+
+    let brick_owners = if version >= Version::AddedOwnerData {
+        array(r, read_user)?
     } else {
-        vec![author.clone()]
+        Vec::new()
     };
 
     Ok(Header2 {
@@ -340,7 +350,7 @@ fn read_header2(r: &mut impl Read, version: u16, author: &User) -> io::Result<He
 }
 
 pub struct ReadBricks {
-    version: u16,
+    version: Version,
     r: BitReader,
     brick_asset_num: u32,
     color_num: u32,
@@ -350,7 +360,7 @@ pub struct ReadBricks {
 
 fn read_bricks(
     r: &mut impl Read,
-    version: u16,
+    version: Version,
     header1: &Header1,
     header2: &Header2,
 ) -> io::Result<ReadBricks> {
@@ -390,7 +400,7 @@ impl ReadBricks {
             ColorMode::Custom(self.r.read_u32::<LittleEndian>()?.into())
         };
 
-        let owner_index = if self.version >= 3 {
+        let owner_index = if self.version >= Version::AddedOwnerData {
             self.r.read_int_packed()
         } else {
             0
@@ -523,10 +533,11 @@ fn date_time(r: &mut impl Read) -> io::Result<DateTime<Utc>> {
         + Duration::nanoseconds((ticks % 10) * 100))
 }
 
-fn brick_owner(r: &mut impl Read) -> io::Result<User> {
-    let id = uuid(r)?;
-    let name = string(r)?;
-    Ok(User { id, name })
+fn read_user(r: &mut impl Read) -> io::Result<User> {
+    Ok(User {
+        id: uuid(r)?,
+        name: string(r)?,
+    })
 }
 
 /// Splits a packed orientation into its corresponding direction and rotation.
