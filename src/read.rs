@@ -42,6 +42,10 @@ impl<R: Read> Reader<R> {
             .try_into()
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Unsupported version"))?;
 
+        if version > Version::AddedDateTime {
+            todo!()
+        }
+
         // TODO: Consider providing the first or last game version
         // that used this save version
         let game_version = 3642;
