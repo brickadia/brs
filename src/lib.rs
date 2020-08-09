@@ -129,7 +129,11 @@ pub enum Version {
     Initial = 1,
     MaterialsStoredAsNames,
     AddedOwnerData,
-    AddedDateTime,
+    AddedDateTime, // Alpha 4
+    AddedComponentsData,
+    AddedScreenshotData,
+    AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials,
+    RenamedComponentDescriptors, // Alpha 5 (QA)
 }
 
 /// The version that will be written.
