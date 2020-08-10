@@ -1,19 +1,16 @@
-use brs::{HasHeader1, HasHeader2};
-use std::env::args;
-use std::fs::File;
-
 fn main() -> std::io::Result<()> {
-    let path = args().nth(1).expect("missing path");
-    let reader = brs::Reader::new(File::open(path)?)?;
-    let reader = reader.read_header1()?;
-    let reader = reader.read_header2()?;
-    dbg!(reader.header1());
-    dbg!(reader.header2());
-    let mut first_brick = None;
-    for brick in reader.iter_bricks()? {
+    let path = std::env::args().nth(1).expect("missing path");
+    let reader = brs::Reader::new(std::fs::File::open(path)?)?;
+    // Optional: let (reader, screenshot) = reader.screenshot_data()?;
+    let (reader, bricks) = reader.bricks()?;
+    println!("{:?}", reader);
+    let mut last_brick = None;
+    for brick in bricks {
         let brick = brick?;
-        first_brick.get_or_insert(brick);
+        last_brick = Some(brick);
     }
-    dbg!(first_brick);
+    println!("{:?}", last_brick);
+    let (_reader, components) = reader.components()?;
+    println!("components: {:?}", components.iter().collect::<Vec<_>>());
     Ok(())
 }

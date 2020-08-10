@@ -106,3 +106,32 @@ pub struct User {
     pub id: Uuid,
     pub name: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct BrickOwner {
+    pub user: User,
+    pub brick_count: u32,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, IntoPrimitive, TryFromPrimitive)]
+pub enum ScreenshotFormat {
+    /// File doesn't contain screenshot, i.e. dedicated server save
+    None = 0,
+    /// Standard PNG encoded screenshot
+    Png,
+}
+
+/// A save file version.
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, IntoPrimitive, TryFromPrimitive)]
+pub enum Version {
+    Initial = 1,
+    MaterialsStoredAsNames,
+    AddedOwnerData,
+    AddedDateTime, // Alpha 4 Patch 1
+    AddedComponentsData,
+    AddedScreenshotData,
+    AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials,
+    RenamedComponentDescriptors, // Alpha 5 (QA)
+}
