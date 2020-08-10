@@ -1,6 +1,6 @@
 use crate::{
     bit_reader::BitReader,
-    save::{Brick, Color, ColorMode, Direction, Rotation, User},
+    save::{Brick, BrickOwner, Color, ColorMode, Direction, Rotation, ScreenshotFormat, User},
     ue4_date_time_base, Version, MAGIC,
 };
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
@@ -12,13 +12,38 @@ use std::{
 };
 use uuid::Uuid;
 
-pub struct Reader<R: Read> {
+mod sealed {
+    use std::fmt::Debug;
+    pub trait Sealed {}
+    pub trait ReaderState: Sealed + Debug {}
+}
+
+pub use sealed::ReaderState;
+use sealed::Sealed;
+
+#[derive(Debug)]
+struct SharedReaderData<R> {
     r: R,
     version: Version,
     game_version: u32,
+    header1: Header1,
+    header2: Header2,
+    screenshot_format: ScreenshotFormat,
+    screenshot_data_length: u32,
 }
 
-impl<R: Read> Reader<R> {
+#[derive(Debug)]
+pub struct Reader<R, S: ReaderState> {
+    shared: Box<SharedReaderData<R>>,
+    state: S,
+}
+
+#[derive(Debug)]
+pub struct Init;
+impl Sealed for Init {}
+impl ReaderState for Init {}
+
+impl<R: Read> Reader<R, Init> {
     /// Create a new reader that reads from `r`.
     ///
     /// ```no_run
@@ -42,119 +67,97 @@ impl<R: Read> Reader<R> {
             .try_into()
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Unsupported version"))?;
 
-        if version > Version::AddedDateTime {
-            todo!()
+        let game_version;
+
+        if version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials {
+            game_version = r.read_u32::<LittleEndian>()?;
+        } else {
+            // TODO: Consider providing the first or last game version
+            // that used this save version
+            game_version = 3642;
+        };
+
+        let header1 = read_header1(&mut read_compressed(&mut r)?, version)?;
+        let header2 = read_header2(&mut read_compressed(&mut r)?, version)?;
+
+        let mut screenshot_format = ScreenshotFormat::None;
+        let mut screenshot_data_length = 0u32;
+        if version >= Version::AddedScreenshotData {
+            screenshot_format = r.read_u8()?.try_into().map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "Unknown screenshot format")
+            })?;
+            if screenshot_format != ScreenshotFormat::None {
+                screenshot_data_length = r.read_u32::<LittleEndian>()?;
+                //self.r.read_exact(&mut screenshot.data)?;
+            }
         }
 
-        // TODO: Consider providing the first or last game version
-        // that used this save version
-        let game_version = 3642;
-
         Ok(Reader {
-            r,
-            version,
-            game_version,
+            shared: Box::new(SharedReaderData {
+                r,
+                version,
+                game_version,
+                header1,
+                header2,
+                screenshot_format,
+                screenshot_data_length,
+            }),
+            state: Init,
         })
     }
 
-    /// Continue parsing to read the first header.
-    /// See [`HasHeader1`](trait.HasHeader1.html) for what it makes available.
-    ///
-    /// ```no_run
-    /// # let reader: brs::Reader<std::fs::File> = unimplemented!();
-    /// let reader = reader.read_header1()?;
-    /// # Ok::<(), std::io::Error>(())
-    /// ```
-    pub fn read_header1(mut self) -> io::Result<ReaderAfterHeader1<R>> {
-        let header1 = read_header1(&mut read_compressed(&mut self.r)?, self.version)?;
+    /// Read the raw screenshot image data. Only meaningful if
+    /// [`screenshot_format`](struct.Reader.html#method.screenshot_format) is not
+    /// [`ScreenshotFormat::None`](enum.ScreenshotFormat.html#variant.None).
+    pub fn screenshot_data(mut self) -> io::Result<(Reader<R, AfterScreenshot>, Vec<u8>)> {
+        let mut data = vec![
+            0;
+            self.shared
+                .screenshot_data_length
+                .try_into()
+                .expect("u32 not a valid usize")
+        ];
+        if self.shared.screenshot_data_length != 0 {
+            self.shared.r.read_exact(&mut data)?;
+        }
+        Ok((
+            Reader {
+                shared: self.shared,
+                state: AfterScreenshot,
+            },
+            data,
+        ))
+    }
 
-        Ok(ReaderAfterHeader1 {
-            inner: self,
-            header1,
+    fn skip_screenshot(mut self) -> io::Result<Reader<R, AfterScreenshot>> {
+        if self.shared.screenshot_data_length != 0 {
+            skip_read(
+                &mut self.shared.r,
+                self.shared
+                    .screenshot_data_length
+                    .try_into()
+                    .expect("u32 not a valid usize"),
+            )?;
+        }
+        Ok(Reader {
+            shared: self.shared,
+            state: AfterScreenshot,
         })
     }
-}
 
-pub struct ReaderAfterHeader1<R: Read> {
-    inner: Reader<R>,
-    header1: Header1,
-}
-
-impl<R: Read> ReaderAfterHeader1<R> {
-    /// Continue parsing to read the second header.
-    /// See [`HasHeader1`](trait.HasHeader2.html) for what it makes available.
+    /// Skip over the screenshot, and begin iterating over the bricks.
     ///
     /// ```no_run
-    /// # let reader: brs::read::ReaderAfterHeader1<std::fs::File> = unimplemented!();
-    /// let reader = reader.read_header2()?;
-    /// # Ok::<(), std::io::Error>(())
-    /// ```
-    pub fn read_header2(mut self) -> io::Result<ReaderAfterHeader2<R>> {
-        let header2 = read_header2(&mut read_compressed(&mut self.inner.r)?, self.inner.version)?;
-
-        Ok(ReaderAfterHeader2 {
-            inner: self,
-            header2,
-        })
-    }
-}
-
-pub struct ReaderAfterHeader2<R: Read> {
-    inner: ReaderAfterHeader1<R>,
-    header2: Header2,
-}
-
-impl<R: Read> ReaderAfterHeader2<R> {
-    /// Begin parsing the bricks and return an iterator over them.
-    /// Consumes the reader.
-    ///
-    /// ```no_run
-    /// # let reader: brs::read::ReaderAfterHeader2<std::fs::File> = unimplemented!();
-    /// for brick in reader.iter_bricks()? {
-    ///     let brick = brick?;
-    /// }
-    /// # Ok::<(), std::io::Error>(())
-    /// ```
-    pub fn iter_bricks(mut self) -> io::Result<ReadBricks> {
-        let rdr = &mut self.inner.inner;
-        let mut brick_section = read_compressed(&mut rdr.r)?;
-        let bricks_iter = read_bricks(
-            &mut brick_section,
-            rdr.version,
-            &self.inner.header1,
-            &self.header2,
-        )?;
-        Ok(bricks_iter)
-    }
-
-    /// Begin parsing the bricks and return an iterator over them,
-    /// along with a finished reader that has header 1 and 2 data.
-    ///
-    /// ```no_run
-    /// # let reader: brs::Reader<std::fs::File> = unimplemented!();
-    /// # let reader = reader.read_header1()?;
-    /// # let reader = reader.read_header2()?;
-    /// let (rdr, bricks) = reader.iter_bricks_and_reader()?;
+    /// # let reader: brs::Reader<std::io::Empty, brs::read::Init> = unimplemented!();
+    /// let (reader, bricks) = reader.bricks()?;
     ///
     /// for brick in bricks {
     ///     let brick = brick?;
     /// }
     /// # Ok::<(), std::io::Error>(())
     /// ```
-    pub fn iter_bricks_and_reader(mut self) -> io::Result<(ReaderAfterBricks, ReadBricks)> {
-        let rdr = &mut self.inner.inner;
-        let mut brick_section = read_compressed(&mut rdr.r)?;
-        let bricks_iter = read_bricks(
-            &mut brick_section,
-            rdr.version,
-            &self.inner.header1,
-            &self.header2,
-        )?;
-        let reader = ReaderAfterBricks {
-            header1: self.inner.header1,
-            header2: self.header2,
-        };
-        Ok((reader, bricks_iter))
+    pub fn bricks(self) -> io::Result<(Reader<R, AfterBricks>, ReadBricks)> {
+        self.skip_screenshot()?.bricks()
     }
 
     /// Read the bricks and create a [`WriteData`](../struct.WriteData.html)
@@ -163,35 +166,174 @@ impl<R: Read> ReaderAfterHeader2<R> {
     ///
     /// ```no_run
     /// # use std::fs::File;
-    /// # let reader: brs::read::ReaderAfterHeader2<File> = unimplemented!();
+    /// # let reader: brs::Reader<std::io::Empty, brs::read::Init> = unimplemented!();
     /// let data = reader.into_write_data()?;
     /// brs::write_save(&mut File::create("park.brs")?, &data)?;
     /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn into_write_data(self) -> io::Result<crate::WriteData> {
-        let (reader, bricks_iter) = self.iter_bricks_and_reader()?;
-        let bricks = bricks_iter.collect::<Result<_, _>>()?;
+        let (reader, screenshot) = self.screenshot_data()?;
+        let (reader, bricks) = reader.bricks()?;
+        let bricks = bricks.collect::<Result<_, _>>()?;
+
+        let header1 = reader.shared.header1;
+        let header2 = reader.shared.header2;
 
         Ok(crate::WriteData {
-            map: reader.header1.map,
-            author: reader.header1.author,
-            description: reader.header1.description,
-            save_time: reader.header1.save_time.unwrap_or_else(Utc::now),
+            map: header1.map,
+            author: header1.author,
+            description: header1.description,
+            save_time: header1.save_time.unwrap_or_else(Utc::now),
 
-            mods: reader.header2.mods,
-            brick_assets: reader.header2.brick_assets,
-            colors: reader.header2.colors,
-            materials: reader.header2.materials,
-            brick_owners: reader.header2.brick_owners,
+            mods: header2.mods,
+            brick_assets: header2.brick_assets,
+            colors: header2.colors,
+            materials: header2.materials,
+            brick_owners: header2.brick_owners.into_iter().map(|o| o.user).collect(),
 
             bricks,
         })
     }
 }
 
-pub struct ReaderAfterBricks {
-    pub header1: Header1,
-    pub header2: Header2,
+#[derive(Debug)]
+pub struct AfterScreenshot;
+impl Sealed for AfterScreenshot {}
+impl ReaderState for AfterScreenshot {}
+
+impl<R: Read> Reader<R, AfterScreenshot> {
+    /// Begin parsing the bricks and return an iterator over them.
+    ///
+    /// ```no_run
+    /// # let reader: brs::Reader<std::io::Empty, brs::read::AfterScreenshot> = unimplemented!();
+    /// let (reader, bricks) = reader.bricks()?;
+    ///
+    /// for brick in bricks {
+    ///     let brick = brick?;
+    /// }
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
+    pub fn bricks(mut self) -> io::Result<(Reader<R, AfterBricks>, ReadBricks)> {
+        let mut brick_section = read_compressed(&mut self.shared.r)?;
+        let bricks_iter = read_bricks(
+            &mut brick_section,
+            self.shared.version,
+            &self.shared.header1,
+            &self.shared.header2,
+        )?;
+        Ok((
+            Reader {
+                shared: self.shared,
+                state: AfterBricks,
+            },
+            bricks_iter,
+        ))
+    }
+}
+
+#[derive(Debug)]
+pub struct AfterBricks;
+impl Sealed for AfterBricks {}
+impl ReaderState for AfterBricks {}
+
+impl<R: Read> Reader<R, AfterBricks> {
+    /// Parse the components partially and return an interface for further access.
+    ///
+    /// ```no_run
+    /// # let reader: brs::Reader<std::io::Empty, brs::read::AfterBricks> = unimplemented!();
+    /// let (reader, components0) = reader.components()?;
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
+    pub fn components(mut self) -> io::Result<(Reader<R, AfterComponents>, Components)> {
+        let iter = if self.shared.version < Version::AddedComponentsData {
+            Components::empty()
+        } else {
+            let section = read_compressed(&mut self.shared.r)?;
+            Components::read(
+                section.into_inner(),
+                self.shared.version,
+                &self.shared.header1,
+                //&self.shared.header2,
+            )?
+        };
+        Ok((
+            Reader {
+                shared: self.shared,
+                state: AfterComponents,
+            },
+            iter,
+        ))
+    }
+}
+
+#[derive(Debug)]
+pub struct AfterComponents;
+impl Sealed for AfterComponents {}
+impl ReaderState for AfterComponents {}
+
+impl<R, S: ReaderState> Reader<R, S> {
+    pub fn format_version(&self) -> Version {
+        self.shared.version
+    }
+
+    /// The numeric game version (CLxxxx).
+    pub fn game_changelist(&self) -> u32 {
+        self.shared.game_version
+    }
+
+    /// Do the `brick_count` values of the `BrickOwner` entries in this build have meaningful values?
+    /// Available in builds saved in Alpha 5+. Value is `0` otherwise.
+    pub fn has_brick_owner_counts(&self) -> bool {
+        self.shared.version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials
+    }
+
+    pub fn map(&self) -> &str {
+        &self.shared.header1.map
+    }
+
+    pub fn author(&self) -> &User {
+        &self.shared.header1.author
+    }
+
+    pub fn description(&self) -> &str {
+        &self.shared.header1.description
+    }
+
+    pub fn save_time(&self) -> Option<&DateTime<Utc>> {
+        self.shared.header1.save_time.as_ref()
+    }
+
+    pub fn brick_count(&self) -> u32 {
+        self.shared.header1.brick_count
+    }
+
+    pub fn mods(&self) -> &[String] {
+        &self.shared.header2.mods[..]
+    }
+
+    pub fn brick_assets(&self) -> &[String] {
+        &self.shared.header2.brick_assets[..]
+    }
+
+    pub fn colors(&self) -> &[Color] {
+        &self.shared.header2.colors[..]
+    }
+
+    pub fn materials(&self) -> &[String] {
+        &self.shared.header2.materials[..]
+    }
+
+    pub fn brick_owners(&self) -> &[BrickOwner] {
+        &self.shared.header2.brick_owners[..]
+    }
+
+    pub fn screenshot_format(&self) -> ScreenshotFormat {
+        self.shared.screenshot_format
+    }
+
+    // pub fn screenshot_data_len(&self) -> u32 {
+    //     self.shared.screenshot_data_len
+    // }
 }
 
 #[derive(Debug, Clone)]
@@ -201,7 +343,7 @@ pub struct Header1 {
     pub description: String,
     pub host: Option<User>,
     pub save_time: Option<DateTime<Utc>>,
-    pub brick_count: i32,
+    pub brick_count: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -210,87 +352,7 @@ pub struct Header2 {
     pub brick_assets: Vec<String>,
     pub colors: Vec<Color>,
     pub materials: Vec<String>,
-    pub brick_owners: Vec<User>,
-}
-
-/// Exposes information available in the first header.
-pub trait HasHeader1 {
-    fn header1(&self) -> &Header1;
-
-    fn map(&self) -> &str {
-        &self.header1().map
-    }
-
-    fn author(&self) -> &User {
-        &self.header1().author
-    }
-
-    fn description(&self) -> &str {
-        &self.header1().description
-    }
-
-    fn save_time(&self) -> Option<&DateTime<Utc>> {
-        self.header1().save_time.as_ref()
-    }
-
-    fn brick_count(&self) -> i32 {
-        self.header1().brick_count
-    }
-}
-
-/// Exposes information available in the second header.
-pub trait HasHeader2 {
-    fn header2(&self) -> &Header2;
-
-    fn mods(&self) -> &[String] {
-        &self.header2().mods[..]
-    }
-
-    fn brick_assets(&self) -> &[String] {
-        &self.header2().brick_assets[..]
-    }
-
-    fn colors(&self) -> &[Color] {
-        &self.header2().colors[..]
-    }
-
-    fn materials(&self) -> &[String] {
-        &self.header2().materials[..]
-    }
-
-    fn brick_owners(&self) -> &[User] {
-        &self.header2().brick_owners[..]
-    }
-}
-
-impl<R: Read> HasHeader1 for ReaderAfterHeader1<R> {
-    fn header1(&self) -> &Header1 {
-        &self.header1
-    }
-}
-
-impl<R: Read> HasHeader1 for ReaderAfterHeader2<R> {
-    fn header1(&self) -> &Header1 {
-        &self.inner.header1
-    }
-}
-
-impl HasHeader1 for ReaderAfterBricks {
-    fn header1(&self) -> &Header1 {
-        &self.header1
-    }
-}
-
-impl<R: Read> HasHeader2 for ReaderAfterHeader2<R> {
-    fn header2(&self) -> &Header2 {
-        &self.header2
-    }
-}
-
-impl HasHeader2 for ReaderAfterBricks {
-    fn header2(&self) -> &Header2 {
-        &self.header2
-    }
+    pub brick_owners: Vec<BrickOwner>,
 }
 
 fn read_header1(r: &mut impl Read, version: Version) -> io::Result<Header1> {
@@ -299,7 +361,11 @@ fn read_header1(r: &mut impl Read, version: Version) -> io::Result<Header1> {
     let description = string(r)?;
     let author_id = uuid(r)?;
 
-    let host = None;
+    let host = if version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials {
+        Some(read_user_name_first(r)?)
+    } else {
+        None
+    };
 
     let save_time = if version >= Version::AddedDateTime {
         Some(date_time(r)?)
@@ -307,7 +373,7 @@ fn read_header1(r: &mut impl Read, version: Version) -> io::Result<Header1> {
         None
     };
 
-    let brick_count = r.read_i32::<LittleEndian>()?;
+    let brick_count = r.read_i32::<LittleEndian>()?.try_into().unwrap_or(0);
 
     Ok(Header1 {
         map,
@@ -336,11 +402,21 @@ fn read_header2(r: &mut impl Read, version: Version) -> io::Result<Header2> {
             .collect()
     };
 
-    let brick_owners = if version >= Version::AddedOwnerData {
-        array(r, read_user)?
-    } else {
-        Vec::new()
-    };
+    let brick_owners =
+        if version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials {
+            //(*BitArchive) << Data.BrickOwners;
+            array(r, read_brick_owner)?
+        } else if version >= Version::AddedOwnerData {
+            array(r, read_user)?
+                .into_iter()
+                .map(|user| BrickOwner {
+                    user,
+                    brick_count: 0,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
 
     Ok(Header2 {
         mods,
@@ -353,11 +429,12 @@ fn read_header2(r: &mut impl Read, version: Version) -> io::Result<Header2> {
 
 pub struct ReadBricks {
     version: Version,
-    r: BitReader,
+    r: BitReader<Vec<u8>>,
     brick_asset_num: u32,
     color_num: u32,
-    brick_count: i32,
-    index: i32,
+    material_num: u32,
+    brick_count: u32,
+    index: u32,
 }
 
 fn read_bricks(
@@ -373,6 +450,7 @@ fn read_bricks(
         r: BitReader::new(buf),
         brick_asset_num: header2.brick_assets.len() as u32,
         color_num: header2.colors.len() as u32,
+        material_num: header2.materials.len() as u32,
         brick_count: header1.brick_count,
         index: 0,
     })
@@ -391,11 +469,16 @@ impl ReadBricks {
         let orientation = self.r.read_int(24) as u8;
         let collision = self.r.read_bit();
         let visibility = self.r.read_bit();
-        let material_index = if self.r.read_bit() {
-            self.r.read_int_packed()
-        } else {
-            1
-        };
+
+        let material_index =
+            if self.version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials {
+                self.r.read_int(self.material_num.max(2))
+            } else if self.r.read_bit() {
+                self.r.read_int_packed()
+            } else {
+                1
+            };
+
         let color = if !self.r.read_bit() {
             ColorMode::Set(self.r.read_int(self.color_num))
         } else {
@@ -449,7 +532,79 @@ impl Iterator for ReadBricks {
     }
 }
 
-fn read_compressed(r: &mut impl Read) -> io::Result<impl Read> {
+pub struct Components {
+    compressed: BitReader<Vec<u8>>,
+    version: Version,
+    brick_count: u32,
+    components: Vec<ComponentEntry>,
+}
+
+impl Components {
+    fn empty() -> Self {
+        Self {
+            compressed: BitReader::new(Vec::new()),
+            version: Version::Initial,
+            brick_count: 0,
+            components: Vec::new(),
+        }
+    }
+
+    fn read(compressed: Vec<u8>, version: Version, header1: &Header1) -> io::Result<Self> {
+        let mut compressed = BitReader::new(compressed);
+        let filled_components = compressed
+            .read_i32::<LittleEndian>()?
+            .try_into()
+            .unwrap_or(0);
+        let mut components = Vec::with_capacity(filled_components);
+
+        for _ in 0..filled_components {
+            compressed.eat_byte_align();
+
+            let mut name = string(&mut compressed).unwrap();
+            if version < Version::RenamedComponentDescriptors {
+                // TODO: Ignore case
+                name = name.replace("BTD", "BCD");
+            }
+
+            let data_len: usize = compressed
+                .read_u32::<LittleEndian>()
+                .unwrap()
+                .try_into()
+                .expect("u32 -> usize failed");
+            let data_pos = compressed.pos();
+            compressed.seek(data_pos + (data_len << 3));
+
+            components.push(ComponentEntry {
+                name,
+                data_len,
+                data_pos,
+            });
+        }
+
+        Ok(Self {
+            compressed,
+            version,
+            brick_count: header1.brick_count,
+            components,
+        })
+    }
+
+    pub fn len(&self) -> usize {
+        self.components.len()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.components.iter().map(|e| e.name.as_str())
+    }
+}
+
+struct ComponentEntry {
+    name: String,
+    data_len: usize,
+    data_pos: usize,
+}
+
+fn read_compressed(r: &mut impl Read) -> io::Result<Cursor<Vec<u8>>> {
     let uncompressed_size = r.read_i32::<LittleEndian>()?;
     let compressed_size = r.read_i32::<LittleEndian>()?;
     if uncompressed_size < 0 || compressed_size < 0 || compressed_size >= uncompressed_size {
@@ -542,9 +697,34 @@ fn read_user(r: &mut impl Read) -> io::Result<User> {
     })
 }
 
+fn read_user_name_first(r: &mut impl Read) -> io::Result<User> {
+    Ok(User {
+        name: string(r)?,
+        id: uuid(r)?,
+    })
+}
+
+fn read_brick_owner(r: &mut impl Read) -> io::Result<BrickOwner> {
+    Ok(BrickOwner {
+        user: read_user(r)?,
+        brick_count: r.read_u32::<LittleEndian>()?,
+    })
+}
+
 /// Splits a packed orientation into its corresponding direction and rotation.
 fn split_orientation(orientation: u8) -> (Direction, Rotation) {
     let direction = ((orientation >> 2) % 6).try_into().unwrap();
     let rotation = (orientation & 0b11).try_into().unwrap();
     (direction, rotation)
+}
+
+fn skip_read(mut read: impl Read, mut len: usize) -> io::Result<()> {
+    const MAX_READ: usize = 32768;
+    let mut chunk = vec![0; MAX_READ];
+    while len != 0 {
+        let read_len = chunk.len().min(len.into());
+        read.read_exact(&mut chunk[..read_len])?;
+        len -= read_len;
+    }
+    Ok(())
 }

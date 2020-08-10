@@ -3,12 +3,10 @@
 //! Aims to be able to read all previous versions just like the game,
 //! but only write the newest version of the format.
 //!
-//! # Usage
+//! # Reading
 //!
-//! ## Reading
-//!
-//! First, create a reader from any
-//! [`Read`](https://doc.rust-lang.org/std/io/trait.Read.html)
+//! A [`Reader`](struct.Reader.html) can be created from any
+//! [`io::Read`](https://doc.rust-lang.org/std/io/trait.Read.html)
 //! source, such as a file or buffer.
 //!
 //! ```no_run
@@ -17,63 +15,42 @@
 //! # Ok::<(), std::io::Error>(())
 //! ```
 //!
-//! Brickadia save files have information split into sections ordered
-//! such that one can extract simple information
-//! without needing to parse the entire file.
-//!
-//! This library surfaces this by strictly enforcing the way that data is read
-//! and made available at the type level; you can't go wrong.
-//!
-//! To continue, reading the first header gets you basic information.
-//! For details on what is available, see
-//! [`HasHeader1`](read/trait.HasHeader1.html).
+//! This will read the initial headers, metadata, etc., and make them available with accessors:
 //!
 //! ```no_run
-//! use brs::HasHeader1;
-//! # let reader: brs::Reader<std::fs::File> = unimplemented!();
-//! let reader = reader.read_header1()?;
+//! # let reader: brs::Reader<std::io::Empty, brs::read::Init> = unimplemented!();
 //! println!("Brick count: {}", reader.brick_count());
 //! println!("Map: {}", reader.map());
+//! println!("Description: {}", reader.description());
+//! println!("Brick owners: {:?}", reader.brick_owners());
+//! println!("Color count: {}", reader.colors().len());
 //! # Ok::<(), std::io::Error>(())
 //! ```
 //!
-//! The next header contains data less likely to be relevant for simpler
-//! introspection, but rather things such as tables for loading bricks.
-//! See [`HasHeader2`](read/trait.HasHeader2.html).
+//! Newer saves contain an embedded screenshot you can request before reading the bricks.
+//! This step can be skipped.
 //!
 //! ```no_run
-//! use brs::HasHeader2;
-//! # let reader: brs::read::ReaderAfterHeader1<std::fs::File> = unimplemented!();
-//! let reader = reader.read_header2()?;
-//! println!("Mods: {:?}", reader.mods());
-//! println!("Color count: {}", reader.colors().len());
-//! // Properties from header 1 are still available:
-//! use brs::HasHeader1;
-//! println!("Description: {}", reader.description());
+//! # let reader: brs::Reader<std::io::Empty, brs::read::Init> = unimplemented!();
+//! let image_format = reader.screenshot_format();
+//! let (reader, image_bytes) = reader.screenshot_data()?;
 //! # Ok::<(), std::io::Error>(())
 //! ```
 //!
-//! After both headers have been read, you may now iterate over the bricks.
+//! Bricks can then be iterated over.
 //! See [`Brick`](struct.Brick.html).
 //!
 //! ```no_run
-//! # let reader: brs::read::ReaderAfterHeader2<std::fs::File> = unimplemented!();
-//! for brick in reader.iter_bricks()? {
+//! # let reader: brs::Reader<std::io::Empty, brs::read::AfterScreenshot> = unimplemented!();
+//! let (reader, bricks) = reader.bricks()?;
+//! for brick in bricks {
 //!     let brick = brick?;
-//!     println!("{:?}", brick);
+//!     println!("{} {:?}", reader.brick_count(), brick);
 //! }
 //! # Ok::<(), std::io::Error>(())
 //! ```
 //!
-//! You may retain access to the header information while getting the iterator:
-//!
-//! ```no_run
-//! # let reader: brs::read::ReaderAfterHeader2<std::fs::File> = unimplemented!();
-//! let (reader, bricks) = reader.iter_bricks_and_reader()?;
-//! # Ok::<(), std::io::Error>(())
-//! ```
-//!
-//! ## Writing
+//! # Writing
 //!
 //! Writing save files isn't as fancy, for now you simply just put all the data
 //! in the [`WriteData`](struct.WriteData.html) struct and pass it to
@@ -110,7 +87,7 @@ mod save;
 pub mod read;
 mod write;
 
-pub use read::{HasHeader1, HasHeader2, Reader};
+pub use read::Reader;
 pub use save::*;
 pub use write::{write_save, WriteData};
 
@@ -118,23 +95,8 @@ pub use chrono;
 pub use uuid;
 
 use chrono::prelude::*;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 const MAGIC: [u8; 3] = [b'B', b'R', b'S'];
-
-/// A save file version.
-#[repr(u16)]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, IntoPrimitive, TryFromPrimitive)]
-pub enum Version {
-    Initial = 1,
-    MaterialsStoredAsNames,
-    AddedOwnerData,
-    AddedDateTime, // Alpha 4
-    AddedComponentsData,
-    AddedScreenshotData,
-    AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials,
-    RenamedComponentDescriptors, // Alpha 5 (QA)
-}
 
 /// The version that will be written.
 pub const VERSION_WRITE: Version = Version::AddedDateTime;

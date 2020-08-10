@@ -3,20 +3,30 @@
 
 use std::io::{self, prelude::*};
 
-pub struct BitReader {
-    buf: Vec<u8>,
+pub struct BitReader<R> {
+    buf: R,
     pos: usize,
 }
 
-impl BitReader {
-    pub fn new(buf: Vec<u8>) -> Self {
+impl<R> BitReader<R> {
+    pub fn new(buf: R) -> Self {
         Self { buf, pos: 0 }
     }
 
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+
+    pub fn seek(&mut self, pos: usize) {
+        self.pos = pos;
+    }
+}
+
+impl<R: AsRef<[u8]>> BitReader<R> {
     // ReadBit
     #[inline(always)]
     pub fn read_bit(&mut self) -> bool {
-        let bit = (self.buf[self.pos >> 3] & (1 << (self.pos & 7))) != 0;
+        let bit = (self.buf.as_ref()[self.pos >> 3] & (1 << (self.pos & 7))) != 0;
         self.pos += 1;
         bit
     }
@@ -124,7 +134,7 @@ impl BitReader {
     }
 }
 
-impl Read for BitReader {
+impl<R: AsRef<[u8]>> Read for BitReader<R> {
     fn read(&mut self, dst: &mut [u8]) -> io::Result<usize> {
         self.read_bits(dst, dst.len() * 8);
         Ok(dst.len())
