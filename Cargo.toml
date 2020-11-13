@@ -15,3 +15,10 @@ flate2 = { version = "1.0.19", features = ["zlib-ng-compat"], default-features =
 uuid = "0.8.1"
 chrono = "0.4.19"
 num_enum = "0.5.1"
+
+[dev-dependencies]
+criterion = "0.3.3"
+
+[[bench]]
+name = "main"
+harness = false
