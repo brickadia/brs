@@ -169,7 +169,7 @@ impl<R: BufRead> Reader<R, Init> {
     pub fn into_write_data(self) -> io::Result<crate::WriteData> {
         let (reader, screenshot) = self.screenshot()?;
         let (reader, bricks) = reader.bricks()?;
-        let bricks = bricks.collect::<Result<_, _>>()?;
+        let bricks = bricks.iter().collect::<Result<_, _>>()?;
 
         let header1 = reader.shared.header1;
         let header2 = reader.shared.header2;
@@ -423,14 +423,15 @@ fn read_header2(r: &mut impl Read, version: Version) -> io::Result<Header2> {
     })
 }
 
+pub type ReadBrickError = io::Error;
+
 pub struct ReadBricks {
     version: Version,
-    r: BitReader<Vec<u8>>,
-    brick_asset_num: u32,
+    buf: Vec<u8>,
+    brick_asset_num_max: u32,
     color_num: u32,
-    material_num: u32,
+    material_num_max: u32,
     brick_count: u32,
-    index: u32,
 }
 
 fn read_bricks(
@@ -443,52 +444,78 @@ fn read_bricks(
     r.read_to_end(&mut buf)?;
     Ok(ReadBricks {
         version,
-        r: BitReader::new(buf),
-        brick_asset_num: header2.brick_assets.len() as u32,
+        buf,
+        brick_asset_num_max: header2.brick_assets.len().max(2) as u32,
         color_num: header2.colors.len() as u32,
-        material_num: header2.materials.len() as u32,
+        material_num_max: header2.materials.len().max(2) as u32,
         brick_count: header1.brick_count,
-        index: 0,
     })
 }
 
 impl ReadBricks {
-    fn read_brick(&mut self) -> io::Result<Brick> {
-        self.r.eat_byte_align();
-        let asset_name_index = self.r.read_int(self.brick_asset_num.max(2));
-        let size = if self.r.read_bit() {
-            self.r.read_positive_int_vector_packed()
+    pub fn iter(&self) -> ReadBricksIter<'_> {
+        ReadBricksIter {
+            read_bricks: self,
+            reader: BitReader::new(&self.buf),
+            index: 0,
+        }
+    }
+}
+
+impl<'rb> IntoIterator for &'rb ReadBricks {
+    type Item = Result<Brick, ReadBrickError>;
+    type IntoIter = ReadBricksIter<'rb>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+pub struct ReadBricksIter<'rb> {
+    read_bricks: &'rb ReadBricks,
+    reader: BitReader<'rb>,
+    index: u32,
+}
+
+impl<'rb> ReadBricksIter<'rb> {
+    fn read_brick(&mut self) -> Result<Brick, ReadBrickError> {
+        let bricks = &self.read_bricks;
+        let rdr = &mut self.reader;
+
+        rdr.eat_byte_align();
+        let asset_name_index = rdr.read_int(bricks.brick_asset_num_max);
+        let size = if rdr.read_bit() {
+            rdr.read_positive_int_vector_packed()
         } else {
             (0, 0, 0)
         };
-        let position = self.r.read_int_vector_packed();
-        let orientation = self.r.read_int(24) as u8;
-        let collision = self.r.read_bit();
-        let visibility = self.r.read_bit();
+        let position = rdr.read_int_vector_packed();
+        let orientation = rdr.read_int(24) as u8;
+        let collision = rdr.read_bit();
+        let visibility = rdr.read_bit();
 
         let material_index =
-            if self.version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials {
-                self.r.read_int(self.material_num.max(2))
-            } else if self.r.read_bit() {
-                self.r.read_int_packed()
+            if bricks.version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials {
+                rdr.read_int(bricks.material_num_max)
+            } else if rdr.read_bit() {
+                rdr.read_int_packed()
             } else {
                 1
             };
 
-        let color = if !self.r.read_bit() {
-            ColorMode::Set(self.r.read_int(self.color_num))
+        let color = if !rdr.read_bit() {
+            ColorMode::Set(rdr.read_int(bricks.color_num))
         } else {
-            ColorMode::Custom(self.r.read_u32::<LittleEndian>()?.into())
+            ColorMode::Custom(rdr.read_u32::<LittleEndian>()?.into())
         };
 
-        let owner_index = if self.version >= Version::AddedOwnerData {
-            self.r.read_int_packed()
+        let owner_index = if bricks.version >= Version::AddedOwnerData {
+            match rdr.read_int_packed() {
+                0 => None,
+                n => Some(n - 1),
+            }
         } else {
-            0
-        };
-        let owner_index = match owner_index {
-            0 => None,
-            n => Some(n - 1),
+            None
         };
 
         let (direction, rotation) = split_orientation(orientation);
@@ -508,19 +535,18 @@ impl ReadBricks {
     }
 }
 
-impl Iterator for ReadBricks {
-    type Item = io::Result<Brick>;
+
+impl<'rb> Iterator for ReadBricksIter<'rb> {
+    type Item = Result<Brick, ReadBrickError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.brick_count {
+        if self.index < self.read_bricks.brick_count {
             let result = self.read_brick();
-
             if result.is_ok() {
                 self.index += 1;
             } else {
-                self.index = self.brick_count;
+                self.index = self.read_bricks.brick_count;
             }
-
             Some(result)
         } else {
             None
@@ -529,7 +555,7 @@ impl Iterator for ReadBricks {
 }
 
 pub struct Components {
-    compressed: BitReader<Vec<u8>>,
+    compressed: Vec<u8>,
     version: Version,
     brick_count: u32,
     components: Vec<ComponentEntry>,
@@ -538,7 +564,7 @@ pub struct Components {
 impl Components {
     fn empty() -> Self {
         Self {
-            compressed: BitReader::new(Vec::new()),
+            compressed: Vec::new(),
             version: Version::Initial,
             brick_count: 0,
             components: Vec::new(),
@@ -546,31 +572,31 @@ impl Components {
     }
 
     fn read(compressed: Vec<u8>, version: Version, header1: &Header1) -> io::Result<Self> {
-        let mut compressed = BitReader::new(compressed);
-        let filled_components = compressed
+        let mut reader = BitReader::new(&compressed);
+        let filled_components = reader
             .read_i32::<LittleEndian>()?
             .try_into()
             .unwrap_or(0);
         let mut components = Vec::with_capacity(filled_components);
 
         for _ in 0..filled_components {
-            compressed.eat_byte_align();
+            reader.eat_byte_align();
 
-            let mut name = string(&mut compressed)?;
+            let mut name = string(&mut reader)?;
             if version < Version::RenamedComponentDescriptors {
                 // TODO: Ignore case
                 name = name.replace("BTD", "BCD");
             }
 
             let data_len: usize =
-                compressed
+                reader
                     .read_u32::<LittleEndian>()?
                     .try_into()
                     .map_err(|_| {
                         io::Error::new(io::ErrorKind::InvalidData, "Component data too long")
                     })?;
-            let data_pos = compressed.pos();
-            compressed.seek(data_pos + (data_len << 3));
+            let data_pos = reader.offset(&compressed).try_into().unwrap();
+            reader = BitReader::new_at(&compressed, data_pos + (data_len << 3));
 
             components.push(ComponentEntry {
                 name,
