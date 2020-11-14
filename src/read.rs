@@ -429,7 +429,7 @@ fn read_header2(r: &mut impl Read, version: Version) -> io::Result<Header2> {
 
 pub struct ReadBricks {
     version: Version,
-    r: BitReader<Vec<u8>>,
+    r: BitReader<Cursor<Vec<u8>>>,
     brick_asset_num: u32,
     color_num: u32,
     material_num: u32,
@@ -447,7 +447,7 @@ fn read_bricks(
     r.read_to_end(&mut buf)?;
     Ok(ReadBricks {
         version,
-        r: BitReader::new(buf),
+        r: BitReader::new(Cursor::new(buf)),
         brick_asset_num: header2.brick_assets.len() as u32,
         color_num: header2.colors.len() as u32,
         material_num: header2.materials.len() as u32,
@@ -533,7 +533,7 @@ impl Iterator for ReadBricks {
 }
 
 pub struct Components {
-    compressed: BitReader<Vec<u8>>,
+    compressed: BitReader<Cursor<Vec<u8>>>,
     version: Version,
     brick_count: u32,
     components: Vec<ComponentEntry>,
@@ -542,7 +542,7 @@ pub struct Components {
 impl Components {
     fn empty() -> Self {
         Self {
-            compressed: BitReader::new(Vec::new()),
+            compressed: BitReader::new(Cursor::new(Vec::new())),
             version: Version::Initial,
             brick_count: 0,
             components: Vec::new(),
@@ -550,7 +550,7 @@ impl Components {
     }
 
     fn read(compressed: Vec<u8>, version: Version, header1: &Header1) -> io::Result<Self> {
-        let mut compressed = BitReader::new(compressed);
+        let mut compressed = BitReader::new(Cursor::new(compressed));
         let filled_components = compressed
             .read_i32::<LittleEndian>()?
             .try_into()
@@ -571,13 +571,12 @@ impl Components {
                 .unwrap()
                 .try_into()
                 .expect("u32 -> usize failed");
-            let data_pos = compressed.pos();
-            compressed.seek(data_pos + (data_len << 3));
+            compressed.skip((data_len << 3).try_into().unwrap());
 
             components.push(ComponentEntry {
                 name,
                 data_len,
-                data_pos,
+                data_pos: 0, // TODO
             });
         }
 

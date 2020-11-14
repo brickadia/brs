@@ -3,40 +3,30 @@
 
 use std::io::{self, prelude::*};
 
-pub struct BitReader<R> {
-    buf: R,
-    pos: usize,
+pub struct BitReader<R: Read> {
+    inner: bitstream_io::BitReader<R, bitstream_io::LE>,
 }
 
-impl<R> BitReader<R> {
+impl<R: Read> BitReader<R> {
     pub fn new(buf: R) -> Self {
-        Self { buf, pos: 0 }
+        Self { inner: bitstream_io::BitReader::new(buf) }
     }
 
-    pub fn pos(&self) -> usize {
-        self.pos
+    pub fn skip(&mut self, len: u32) {
+        self.inner.skip(len);
     }
 
-    pub fn seek(&mut self, pos: usize) {
-        self.pos = pos;
-    }
-}
-
-impl<R: AsRef<[u8]>> BitReader<R> {
     // ReadBit
     #[inline(always)]
     pub fn read_bit(&mut self) -> bool {
-        let bit = (self.buf.as_ref()[self.pos >> 3] & (1 << (self.pos & 7))) != 0;
-        self.pos += 1;
-        bit
+        self.inner.read_bit().unwrap()
     }
 
     // SerializeBits
     pub fn read_bits(&mut self, dst: &mut [u8], len: usize) {
-        for bit in 0..len {
-            let byte = &mut dst[bit >> 3];
-            let shift = bit & 7;
-            *byte = (*byte & !(1 << shift)) | (u8::from(self.read_bit()) << shift);
+        self.inner.read_bytes(&mut dst[..len >> 3]).unwrap();
+        if len & 7 != 0 {
+            dst[(len >> 3) + 1] = self.inner.read((len & 7) as u32).unwrap();
         }
     }
 
@@ -94,11 +84,8 @@ impl<R: AsRef<[u8]>> BitReader<R> {
         let mut value = 0;
 
         for i in 0..5 {
-            let has_next = self.read_bit();
-            let mut part = 0;
-            for bit_shift in 0..7 {
-                part |= (self.read_bit() as u32) << bit_shift;
-            }
+            let has_next = self.inner.read_bit().unwrap();
+            let part: u32 = self.inner.read(7).unwrap();
             value |= part << (7 * i);
             if !has_next {
                 break;
@@ -110,7 +97,7 @@ impl<R: AsRef<[u8]>> BitReader<R> {
 
     // EatByteAlign
     pub fn eat_byte_align(&mut self) {
-        self.pos = (self.pos + 7) & !0x07;
+        self.inner.byte_align();
     }
 
     // SerializeIntVectorPacked
@@ -134,9 +121,9 @@ impl<R: AsRef<[u8]>> BitReader<R> {
     }
 }
 
-impl<R: AsRef<[u8]>> Read for BitReader<R> {
+impl<R: Read> Read for BitReader<R> {
     fn read(&mut self, dst: &mut [u8]) -> io::Result<usize> {
-        self.read_bits(dst, dst.len() * 8);
+        self.inner.read_bytes(dst)?;
         Ok(dst.len())
     }
 }
