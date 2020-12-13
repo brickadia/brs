@@ -1,6 +1,7 @@
 fn main() -> std::io::Result<()> {
+    use std::io::BufReader;
     let path = std::env::args().nth(1).expect("missing path");
-    let reader = brs::Reader::new(std::fs::File::open(path)?)?;
+    let reader = brs::Reader::new(BufReader::new(std::fs::File::open(path)?))?;
     // Optional: let (reader, screenshot) = reader.screenshot_data()?;
     let (reader, bricks) = reader.bricks()?;
     println!("{:?}", reader);

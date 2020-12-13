@@ -5,7 +5,7 @@ use crate::{
 };
 use byteorder::{BigEndian, ByteOrder, LittleEndian, WriteBytesExt};
 use chrono::prelude::*;
-use libflate::zlib;
+use flate2::{Compression, write::ZlibEncoder};
 use std::{
     convert::TryFrom,
     io::{self, prelude::*},
@@ -132,13 +132,13 @@ pub fn write_save(w: &mut impl Write, data: &WriteData) -> io::Result<()> {
 }
 
 struct Compressed {
-    encoder: zlib::Encoder<Vec<u8>>,
+    encoder: ZlibEncoder<Vec<u8>>,
     uncompressed: Vec<u8>,
 }
 
 impl Compressed {
     fn new() -> Self {
-        let encoder = zlib::Encoder::new(vec![]).unwrap();
+        let encoder = ZlibEncoder::new(vec![], Compression::default());
         Self {
             encoder,
             uncompressed: vec![],
@@ -146,7 +146,7 @@ impl Compressed {
     }
 
     fn finish(self, w: &mut impl Write) -> io::Result<()> {
-        let compressed = self.encoder.finish().into_result()?;
+        let compressed = self.encoder.finish()?;
 
         let uncompressed_size = self.uncompressed.len();
         let compressed_size = compressed.len();
