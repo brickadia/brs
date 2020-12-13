@@ -102,3 +102,42 @@ const MAGIC: [u8; 3] = [b'B', b'R', b'S'];
 fn ue4_date_time_base() -> DateTime<Utc> {
     Utc.ymd(1, 1, 1).and_hms(0, 0, 0)
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn bit_reader_writer_equal_order() {
+        use crate::{bit_reader::BitReader, bit_writer::BitWriter};
+        let mut writer = BitWriter::new(Vec::new());
+        writer.write_bit(true).unwrap();
+        writer.write_bit(false).unwrap();
+        writer.write_bit(true).unwrap();
+        writer.write_bit(true).unwrap();
+        writer.write_bit(false).unwrap();
+        writer.byte_align().unwrap();
+        writer.write_bit(false).unwrap();
+        writer.write_bit(true).unwrap();
+        writer.write_bit(true).unwrap();
+        writer.write_bit(true).unwrap();
+        writer.byte_align().unwrap();
+        let packed = 398475;
+        writer.write_int_packed(packed).unwrap();
+        let written = writer.finish().unwrap();
+        for (i, v) in written.iter().enumerate() {
+            println!("written[{}]: {:b}", i, v);
+        }
+        let mut reader = BitReader::new(&written);
+        assert_eq!(dbg!(reader.read_bit()), true);
+        assert_eq!(dbg!(reader.read_bit()), false);
+        assert_eq!(dbg!(reader.read_bit()), true);
+        assert_eq!(dbg!(reader.read_bit()), true);
+        assert_eq!(dbg!(reader.read_bit()), false);
+        reader.eat_byte_align();
+        assert_eq!(dbg!(reader.read_bit()), false);
+        assert_eq!(dbg!(reader.read_bit()), true);
+        assert_eq!(dbg!(reader.read_bit()), true);
+        assert_eq!(dbg!(reader.read_bit()), true);
+        reader.eat_byte_align();
+        assert_eq!(dbg!(reader.read_int_packed()), packed);
+    }
+}
