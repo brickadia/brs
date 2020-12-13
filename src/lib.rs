@@ -10,8 +10,8 @@
 //! source, such as a file or buffer.
 //!
 //! ```no_run
-//! # use std::fs::File;
-//! let reader = brs::Reader::new(File::open("village.brs")?)?;
+//! # use std::{fs::File, io::BufReader};
+//! let reader = brs::Reader::new(BufReader::new(File::open("village.brs")?))?;
 //! # Ok::<(), std::io::Error>(())
 //! ```
 //!

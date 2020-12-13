@@ -5,7 +5,7 @@ use crate::{
 };
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use chrono::{prelude::*, Duration};
-use libflate::zlib;
+use flate2::bufread::ZlibDecoder;
 use std::{
     convert::TryInto,
     io::{self, prelude::*, Cursor},
@@ -43,13 +43,13 @@ pub struct Init;
 impl Sealed for Init {}
 impl ReaderState for Init {}
 
-impl<R: Read> Reader<R, Init> {
+impl<R: BufRead> Reader<R, Init> {
     /// Create a new reader that reads from `r`.
     ///
     /// ```no_run
-    /// # use std::fs::File;
+    /// # use std::{fs::File, io::BufReader};
     /// # use brs::Reader;
-    /// let reader = Reader::new(File::open("village.brs")?)?;
+    /// let reader = Reader::new(BufReader::new(File::open("village.brs")?))?;
     /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn new(mut r: R) -> io::Result<Self> {
@@ -201,7 +201,7 @@ pub struct AfterScreenshot;
 impl Sealed for AfterScreenshot {}
 impl ReaderState for AfterScreenshot {}
 
-impl<R: Read> Reader<R, AfterScreenshot> {
+impl<R: BufRead> Reader<R, AfterScreenshot> {
     /// Begin parsing the bricks and return an iterator over them.
     ///
     /// ```no_run
@@ -236,7 +236,7 @@ pub struct AfterBricks;
 impl Sealed for AfterBricks {}
 impl ReaderState for AfterBricks {}
 
-impl<R: Read> Reader<R, AfterBricks> {
+impl<R: BufRead> Reader<R, AfterBricks> {
     /// Parse the components partially and return an interface for further access.
     ///
     /// ```no_run
@@ -604,7 +604,7 @@ struct ComponentEntry {
     data_pos: usize,
 }
 
-fn read_compressed(r: &mut impl Read) -> io::Result<Cursor<Vec<u8>>> {
+fn read_compressed(r: &mut impl BufRead) -> io::Result<Cursor<Vec<u8>>> {
     let uncompressed_size = r.read_i32::<LittleEndian>()?;
     let compressed_size = r.read_i32::<LittleEndian>()?;
     if uncompressed_size < 0 || compressed_size < 0 || compressed_size >= uncompressed_size {
@@ -614,15 +614,17 @@ fn read_compressed(r: &mut impl Read) -> io::Result<Cursor<Vec<u8>>> {
         ));
     }
 
-    // TODO: Don't read the entire thing into memory, somehow stream decode it
+    // TODO: Would be nice to return impl Read instead,
+    // but not sure how to reconcile difference between
+    // Take<R> and Take<ZlibDecoder<Take<R>>>
+    // without resorting to dyn Read.
     if compressed_size == 0 {
         let mut uncompressed = vec![0; uncompressed_size as usize];
         r.read_exact(&mut uncompressed)?;
         Ok(Cursor::new(uncompressed))
     } else {
-        let mut compressed = vec![0; compressed_size as usize];
-        r.read_exact(&mut compressed)?;
-        let mut decoder = zlib::Decoder::new(&compressed[..])?;
+        let compressed = r.by_ref().take(compressed_size as u64);
+        let mut decoder = ZlibDecoder::new(compressed);
         let mut uncompressed = vec![0; uncompressed_size as usize];
         decoder.read_exact(&mut uncompressed)?;
         Ok(Cursor::new(uncompressed))
