@@ -139,8 +139,8 @@ pub struct Screenshot<R> {
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, IntoPrimitive, TryFromPrimitive)]
 pub enum Version {
-    Initial = 1,
-    MaterialsStoredAsNames,
+    Initial = 1, // 0.2.0-0.2.4
+    MaterialsStoredAsNames, // 0.3.0
     AddedOwnerData,
     AddedDateTime, // Alpha 4 Patch 1
     AddedComponentsData,
@@ -148,3 +148,25 @@ pub enum Version {
     AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials,
     RenamedComponentDescriptors, // Alpha 5 (QA)
 }
+
+impl Version {
+    pub fn first_game_version(self) -> u32 {
+        match self {
+            Version::Initial => todo!(),
+            Version::MaterialsStoredAsNames => todo!(),
+            Version::AddedOwnerData => todo!(),
+            Version::AddedDateTime => 3642,
+            Version::AddedComponentsData => todo!(),
+            Version::AddedScreenshotData => todo!(),
+            Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials => todo!(),
+            Version::RenamedComponentDescriptors => todo!(),
+        }
+    }
+}
+
+// MaterialsStoredAsNames was added between 0.2.4 and 0.3.0, so this
+// allows us to prevent loading 0.2 saves (which are broken)
+// TODO: Figure out if this can be removed
+pub const MIN_VERSION_READ: Version = Version::MaterialsStoredAsNames;
+
+pub const MAX_VERSION_READ: Version = Version::RenamedComponentDescriptors;

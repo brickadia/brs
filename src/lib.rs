@@ -85,10 +85,12 @@ mod bit_reader;
 mod bit_writer;
 mod save;
 
-pub mod read;
+//pub mod read;
+pub mod read_new;
+pub use read_new as read;
 pub mod write;
 
-pub use read::Reader;
+pub use read_new::Reader;
 pub use save::*;
 pub use write::{write_save, WriteData};
 
