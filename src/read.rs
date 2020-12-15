@@ -549,17 +549,16 @@ impl Components {
         for _ in 0..filled_components {
             compressed.eat_byte_align();
 
-            let mut name = string(&mut compressed).unwrap();
+            let mut name = string(&mut compressed)?;
             if version < Version::RenamedComponentDescriptors {
                 // TODO: Ignore case
                 name = name.replace("BTD", "BCD");
             }
 
             let data_len: usize = compressed
-                .read_u32::<LittleEndian>()
-                .unwrap()
+                .read_u32::<LittleEndian>()?
                 .try_into()
-                .expect("u32 -> usize failed");
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Component data too long"))?;
             let data_pos = compressed.pos();
             compressed.seek(data_pos + (data_len << 3));
 
