@@ -113,13 +113,17 @@ pub struct BrickOwner {
     pub brick_count: u32,
 }
 
+pub(crate) const SCREENSHOT_NONE: u8 = 0;
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, IntoPrimitive, TryFromPrimitive)]
 pub enum ScreenshotFormat {
-    /// File doesn't contain screenshot, i.e. dedicated server save
-    None = 0,
-    /// Standard PNG encoded screenshot
-    Png,
+    Png = 1,
+}
+
+pub struct Screenshot<R> {
+    pub format: ScreenshotFormat,
+    pub data: R,
 }
 
 /// A save file version.

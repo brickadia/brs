@@ -1,6 +1,9 @@
 use crate::{
     bit_reader::BitReader,
-    save::{Brick, BrickOwner, Color, ColorMode, Direction, Rotation, ScreenshotFormat, User},
+    save::{
+        Brick, BrickOwner, Color, ColorMode, Direction, Rotation, Screenshot, ScreenshotFormat,
+        User, SCREENSHOT_NONE,
+    },
     ue4_date_time_base, Version, MAGIC,
 };
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
@@ -28,8 +31,7 @@ struct SharedReaderData<R> {
     game_version: u32,
     header1: Header1,
     header2: Header2,
-    screenshot_format: ScreenshotFormat,
-    screenshot_data_length: u32,
+    screenshot_info: Option<(ScreenshotFormat, u32)>,
 }
 
 #[derive(Debug)]
@@ -80,17 +82,20 @@ impl<R: BufRead> Reader<R, Init> {
         let header1 = read_header1(&mut read_compressed(&mut r)?, version)?;
         let header2 = read_header2(&mut read_compressed(&mut r)?, version)?;
 
-        let mut screenshot_format = ScreenshotFormat::None;
-        let mut screenshot_data_length = 0u32;
-        if version >= Version::AddedScreenshotData {
-            screenshot_format = r.read_u8()?.try_into().map_err(|_| {
-                io::Error::new(io::ErrorKind::InvalidData, "Unknown screenshot format")
-            })?;
-            if screenshot_format != ScreenshotFormat::None {
-                screenshot_data_length = r.read_u32::<LittleEndian>()?;
-                //self.r.read_exact(&mut screenshot.data)?;
+        let screenshot_info = if version >= Version::AddedScreenshotData {
+            let format_raw = r.read_u8()?;
+            if format_raw != SCREENSHOT_NONE {
+                let format = format_raw.try_into().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidData, "Unknown screenshot format")
+                })?;
+                let len = r.read_u32::<LittleEndian>()?;
+                Some((format, len))
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
 
         Ok(Reader {
             shared: Box::new(SharedReaderData {
@@ -99,8 +104,7 @@ impl<R: BufRead> Reader<R, Init> {
                 game_version,
                 header1,
                 header2,
-                screenshot_format,
-                screenshot_data_length,
+                screenshot_info,
             }),
             state: Init,
         })
@@ -109,35 +113,28 @@ impl<R: BufRead> Reader<R, Init> {
     /// Read the raw screenshot image data. Only meaningful if
     /// [`screenshot_format`](struct.Reader.html#method.screenshot_format) is not
     /// [`ScreenshotFormat::None`](enum.ScreenshotFormat.html#variant.None).
-    pub fn screenshot_data(mut self) -> io::Result<(Reader<R, AfterScreenshot>, Vec<u8>)> {
-        let mut data = vec![
-            0;
-            self.shared
-                .screenshot_data_length
-                .try_into()
-                .expect("u32 not a valid usize")
-        ];
-        if self.shared.screenshot_data_length != 0 {
+    pub fn screenshot_data(
+        mut self,
+    ) -> io::Result<(Reader<R, AfterScreenshot>, Option<Screenshot<Vec<u8>>>)> {
+        let screenshot = if let Some((format, len)) = self.shared.screenshot_info {
+            let mut data = vec![0; len.try_into().expect("u32 into usize")];
             self.shared.r.read_exact(&mut data)?;
-        }
+            Some(Screenshot { format, data })
+        } else {
+            None
+        };
         Ok((
             Reader {
                 shared: self.shared,
                 state: AfterScreenshot,
             },
-            data,
+            screenshot,
         ))
     }
 
     fn skip_screenshot(mut self) -> io::Result<Reader<R, AfterScreenshot>> {
-        if self.shared.screenshot_data_length != 0 {
-            skip_read(
-                &mut self.shared.r,
-                self.shared
-                    .screenshot_data_length
-                    .try_into()
-                    .expect("u32 not a valid usize"),
-            )?;
+        if let Some((_, len)) = self.shared.screenshot_info {
+            skip_read(&mut self.shared.r, len.try_into().expect("u32 into usize"))?;
         }
         Ok(Reader {
             shared: self.shared,
@@ -327,13 +324,9 @@ impl<R, S: ReaderState> Reader<R, S> {
         &self.shared.header2.brick_owners[..]
     }
 
-    pub fn screenshot_format(&self) -> ScreenshotFormat {
-        self.shared.screenshot_format
+    pub fn screenshot_format(&self) -> Option<ScreenshotFormat> {
+        self.shared.screenshot_info.map(|(format, _)| format)
     }
-
-    // pub fn screenshot_data_len(&self) -> u32 {
-    //     self.shared.screenshot_data_len
-    // }
 }
 
 #[derive(Debug, Clone)]
