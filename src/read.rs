@@ -644,32 +644,29 @@ where
 }
 
 fn string(r: &mut impl Read) -> io::Result<String> {
-    let (size, is_ucs2) = match r.read_i32::<LittleEndian>()? {
-        s if s >= 0 => (s, false),
-        s => (-s, true),
-    };
+    let size = r.read_i32::<LittleEndian>()?;
+    let is_unicode = size < 0;
 
-    let mut s = if is_ucs2 {
-        // TODO: Verify that UTF-16 is backwards compatible with UCS-2.
-        if size % 2 != 0 {
+    let mut s = if is_unicode {
+        // TODO: Is this UCS-2 or UTF-16?
+        if size == i32::MIN {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "Invalid UCS-2 data size",
+                "Invalid length for Unicode string",
             ));
         }
-        let mut data = vec![0; size as usize / 2];
+        let size = -size;
+        let mut data = vec![0u16; size as usize];
         r.read_u16_into::<LittleEndian>(&mut data)?;
-        String::from_utf16(data.as_slice())
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UCS-2 data"))?
+        String::from_utf16(data.as_slice()).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidData, "Invalid Unicode string data")
+        })?
     } else {
-        // TODO: Figure out the correct encoding.
-        // 7-bit values should just be ASCII, so that part is fine,
-        // but I don't know what 80h-FFh should be.
-        // Hope that UTF-8 will error for now.
+        // TODO: This is actually ASCII.
         let mut data = vec![0; size as usize];
         r.read_exact(&mut data)?;
         String::from_utf8(data)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid string data"))?
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid ASCII string data"))?
     };
 
     s.pop();
