@@ -28,7 +28,7 @@ use sealed::Sealed;
 struct SharedReaderData<R> {
     r: R,
     version: Version,
-    game_version: u32,
+    game_version: Option<u32>,
     header1: Header1,
     header2: Header2,
     screenshot_info: Option<(ScreenshotFormat, u32)>,
@@ -69,14 +69,10 @@ impl<R: BufRead> Reader<R, Init> {
             .try_into()
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Unsupported version"))?;
 
-        let game_version;
-
-        if version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials {
-            game_version = r.read_u32::<LittleEndian>()?;
+        let game_version = if version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials {
+            Some(r.read_u32::<LittleEndian>()?)
         } else {
-            // TODO: Consider providing the first or last game version
-            // that used this save version
-            game_version = 3642;
+            None
         };
 
         let header1 = read_header1(&mut read_compressed(&mut r)?, version)?;
@@ -274,7 +270,7 @@ impl<R, S: ReaderState> Reader<R, S> {
     }
 
     /// The numeric game version (CLxxxx).
-    pub fn game_changelist(&self) -> u32 {
+    pub fn game_changelist(&self) -> Option<u32> {
         self.shared.game_version
     }
 
