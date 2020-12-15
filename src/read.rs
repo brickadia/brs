@@ -106,10 +106,8 @@ impl<R: BufRead> Reader<R, Init> {
         })
     }
 
-    /// Read the raw screenshot image data. Only meaningful if
-    /// [`screenshot_format`](struct.Reader.html#method.screenshot_format) is not
-    /// [`ScreenshotFormat::None`](enum.ScreenshotFormat.html#variant.None).
-    pub fn screenshot_data(
+    /// Read the screenshot image data.
+    pub fn screenshot(
         mut self,
     ) -> io::Result<(Reader<R, AfterScreenshot>, Option<Screenshot<Vec<u8>>>)> {
         let screenshot = if let Some((format, len)) = self.shared.screenshot_info {
@@ -155,8 +153,8 @@ impl<R: BufRead> Reader<R, Init> {
         self.skip_screenshot()?.bricks()
     }
 
-    /// Read the bricks and create a [`WriteData`](../struct.WriteData.html)
-    /// for use with [`write_save`](../fn.write_save.html),
+    /// Read the bricks and create a [`WriteData`](`crate::WriteData`)
+    /// for use with [`write_save`](`crate::write_save`),
     /// which can be used to write a save file with identical content.
     ///
     /// ```no_run
@@ -167,7 +165,7 @@ impl<R: BufRead> Reader<R, Init> {
     /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn into_write_data(self) -> io::Result<crate::WriteData> {
-        let (reader, screenshot) = self.screenshot_data()?;
+        let (reader, _screenshot) = self.screenshot()?;
         let (reader, bricks) = reader.bricks()?;
         let bricks = bricks.collect::<Result<_, _>>()?;
 
