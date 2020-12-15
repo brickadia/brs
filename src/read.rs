@@ -69,11 +69,12 @@ impl<R: BufRead> Reader<R, Init> {
             .try_into()
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Unsupported version"))?;
 
-        let game_version = if version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials {
-            Some(r.read_u32::<LittleEndian>()?)
-        } else {
-            None
-        };
+        let game_version =
+            if version >= Version::AddedGameVersionAndHostAndOwnerDataAndImprovedMaterials {
+                Some(r.read_u32::<LittleEndian>()?)
+            } else {
+                None
+            };
 
         let header1 = read_header1(&mut read_compressed(&mut r)?, version)?;
         let header2 = read_header2(&mut read_compressed(&mut r)?, version)?;
@@ -111,7 +112,8 @@ impl<R: BufRead> Reader<R, Init> {
         mut self,
     ) -> io::Result<(Reader<R, AfterScreenshot>, Option<Screenshot<Vec<u8>>>)> {
         let screenshot = if let Some((format, len)) = self.shared.screenshot_info {
-            let len = len.try_into()
+            let len = len
+                .try_into()
                 .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Screenshot too large"))?;
             let mut data = vec![0; len];
             self.shared.r.read_exact(&mut data)?;
@@ -555,10 +557,13 @@ impl Components {
                 name = name.replace("BTD", "BCD");
             }
 
-            let data_len: usize = compressed
-                .read_u32::<LittleEndian>()?
-                .try_into()
-                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Component data too long"))?;
+            let data_len: usize =
+                compressed
+                    .read_u32::<LittleEndian>()?
+                    .try_into()
+                    .map_err(|_| {
+                        io::Error::new(io::ErrorKind::InvalidData, "Component data too long")
+                    })?;
             let data_pos = compressed.pos();
             compressed.seek(data_pos + (data_len << 3));
 
