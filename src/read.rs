@@ -113,7 +113,9 @@ impl<R: BufRead> Reader<R, Init> {
         mut self,
     ) -> io::Result<(Reader<R, AfterScreenshot>, Option<Screenshot<Vec<u8>>>)> {
         let screenshot = if let Some((format, len)) = self.shared.screenshot_info {
-            let mut data = vec![0; len.try_into().expect("u32 into usize")];
+            let len = len.try_into()
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Screenshot too large"))?;
+            let mut data = vec![0; len];
             self.shared.r.read_exact(&mut data)?;
             Some(Screenshot { format, data })
         } else {
@@ -707,17 +709,5 @@ fn split_orientation(orientation: u8) -> (Direction, Rotation) {
 }
 
 fn skip_read(read: &mut impl Read, len: u64) -> io::Result<()> {
-    std::io::copy(&mut read.take(len), &mut NullWrite).map(|_| ())
-}
-
-struct NullWrite;
-
-impl Write for NullWrite {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
+    io::copy(&mut read.take(len), &mut io::sink()).map(|_| ())
 }
