@@ -134,7 +134,7 @@ impl<R: BufRead> Reader<R, Init> {
 
     fn skip_screenshot(mut self) -> io::Result<Reader<R, AfterScreenshot>> {
         if let Some((_, len)) = self.shared.screenshot_info {
-            skip_read(&mut self.shared.r, len.try_into().expect("u32 into usize"))?;
+            skip_read(&mut self.shared.r, len.into())?;
         }
         Ok(Reader {
             shared: self.shared,
@@ -710,13 +710,18 @@ fn split_orientation(orientation: u8) -> (Direction, Rotation) {
     (direction, rotation)
 }
 
-fn skip_read(mut read: impl Read, mut len: usize) -> io::Result<()> {
-    const MAX_READ: usize = 32768;
-    let mut chunk = vec![0; MAX_READ];
-    while len != 0 {
-        let read_len = chunk.len().min(len.into());
-        read.read_exact(&mut chunk[..read_len])?;
-        len -= read_len;
+fn skip_read(read: &mut impl Read, len: u64) -> io::Result<()> {
+    std::io::copy(&mut read.take(len), &mut NullWrite).map(|_| ())
+}
+
+struct NullWrite;
+
+impl Write for NullWrite {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        Ok(buf.len())
     }
-    Ok(())
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
