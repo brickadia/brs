@@ -167,7 +167,7 @@ impl<R: BufRead> Reader<R, Init> {
     /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn into_write_data(self) -> io::Result<crate::WriteData> {
-        let (reader, _screenshot) = self.screenshot()?;
+        let (reader, screenshot) = self.screenshot()?;
         let (reader, bricks) = reader.bricks()?;
         let bricks = bricks.collect::<Result<_, _>>()?;
 
@@ -175,10 +175,14 @@ impl<R: BufRead> Reader<R, Init> {
         let header2 = reader.shared.header2;
 
         Ok(crate::WriteData {
+            version: reader.shared.version,
+            game_changelist: reader.shared.game_version,
+
             map: header1.map,
             author: header1.author,
             description: header1.description,
             save_time: header1.save_time.unwrap_or_else(Utc::now),
+            brick_count: Some(header1.brick_count),
 
             mods: header2.mods,
             brick_assets: header2.brick_assets,
@@ -186,6 +190,7 @@ impl<R: BufRead> Reader<R, Init> {
             materials: header2.materials,
             brick_owners: header2.brick_owners.into_iter().map(|o| o.user).collect(),
 
+            screenshot,
             bricks,
         })
     }
