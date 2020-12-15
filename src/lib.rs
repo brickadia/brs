@@ -5,9 +5,8 @@
 //!
 //! # Reading
 //!
-//! A [`Reader`](struct.Reader.html) can be created from any
-//! [`io::Read`](https://doc.rust-lang.org/std/io/trait.Read.html)
-//! source, such as a file or buffer.
+//! A [`Reader`](crate::Reader) can be created from any
+//! [`io::Read`](std::io::Read) source, such as a file or buffer.
 //!
 //! ```no_run
 //! # use std::{fs::File, io::BufReader};
@@ -32,13 +31,14 @@
 //!
 //! ```no_run
 //! # let reader: brs::Reader<std::io::Empty, brs::read::Init> = unimplemented!();
-//! let image_format = reader.screenshot_format();
-//! let (reader, image_bytes) = reader.screenshot_data()?;
+//! let (reader, screenshot) = reader.screenshot()?;
+//! if let Some(screenshot) = screenshot {
+//!     dbg!(screenshot.format);
+//! }
 //! # Ok::<(), std::io::Error>(())
 //! ```
 //!
-//! Bricks can then be iterated over.
-//! See [`Brick`](struct.Brick.html).
+//! Bricks can then be iterated over. See [`Brick`](crate::Brick).
 //!
 //! ```no_run
 //! # let reader: brs::Reader<std::io::Empty, brs::read::AfterScreenshot> = unimplemented!();
@@ -53,9 +53,9 @@
 //! # Writing
 //!
 //! Writing save files isn't as fancy, for now you simply just put all the data
-//! in the [`WriteData`](struct.WriteData.html) struct and pass it to
-//! [`write_save`](fn.write_save.html) along with a
-//! [`Write`](https://doc.rust-lang.org/std/io/trait.Write.html) destination.
+//! in the [`WriteData`](crate::WriteData) struct and pass it to
+//! [`write_save`](crate::write_save) along with a
+//! [`Write`](std::io::Write) destination.
 //!
 //! ```no_run
 //! # use std::fs::File;
