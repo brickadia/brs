@@ -107,6 +107,12 @@ pub struct User {
     pub name: String,
 }
 
+impl Default for User {
+    fn default() -> Self {
+        Self { id: Uuid::nil(), name: "Unknown".to_string() }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct BrickOwner {
     pub user: User,
