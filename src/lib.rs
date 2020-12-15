@@ -68,13 +68,14 @@
 //!     description: "A quaint park full of ducks and turkeys.".to_string(),
 //!     save_time: chrono::Utc::now(),
 //!
-//!     mods: Vec::new(),
 //!     brick_assets: vec!["PB_DefaultBrick".to_string()],
 //!     colors: vec![brs::Color::from_rgba(255, 23, 198, 255)],
 //!     materials: vec!["BMC_Plastic".to_string()],
 //!     brick_owners: Vec::new(),
 //!
 //!     bricks: Vec::new(),
+//!
+//!     ..Default::default()
 //! };
 //! brs::write_save(&mut File::create("park.brs")?, &data)?;
 //! # Ok::<(), std::io::Error>(())
@@ -85,7 +86,7 @@ mod bit_writer;
 mod save;
 
 pub mod read;
-mod write;
+pub mod write;
 
 pub use read::Reader;
 pub use save::*;

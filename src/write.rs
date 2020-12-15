@@ -1,7 +1,7 @@
 use crate::{
     bit_writer::BitWriter,
-    save::{Brick, Color, ColorMode, Direction, Rotation, User},
-    ue4_date_time_base, MAGIC,
+    save::{Brick, Color, ColorMode, Direction, Rotation, Screenshot, User},
+    ue4_date_time_base, Version, MAGIC,
 };
 use byteorder::{BigEndian, ByteOrder, LittleEndian, WriteBytesExt};
 use chrono::prelude::*;
@@ -12,10 +12,15 @@ use std::{
 };
 use uuid::Uuid;
 
-const LATEST_VERSION: u16 = 4;
+pub const LATEST_VERSION: Version = Version::AddedDateTime;
 
 /// Data written to save files by [`write_save`](fn.write_save.html).
-pub struct WriteData {
+pub struct WriteData<ScreenshotData = Vec<u8>> {
+    /// The format version to write.
+    pub version: Version,
+    /// The game changelist this build was saved with.
+    pub game_changelist: Option<u32>,
+
     // Header 1
     /// The name of the map that the save file was created on.
     pub map: String,
@@ -25,7 +30,8 @@ pub struct WriteData {
     pub description: String,
     /// When the save file was created.
     pub save_time: DateTime<Utc>,
-    // pub brick_count: i32,
+    /// Leave as `None`.
+    pub brick_count: Option<u32>,
 
     // Header 2
     /// The mods used by the save file. Format not yet defined.
@@ -44,6 +50,9 @@ pub struct WriteData {
     /// The brick owner lookup table used by bricks.
     pub brick_owners: Vec<User>,
 
+    /// Embedded screenshot.
+    pub screenshot: Option<Screenshot<ScreenshotData>>,
+
     // Bricks
     /// All the bricks in the save file.
     pub bricks: Vec<Brick>,
@@ -52,10 +61,14 @@ pub struct WriteData {
 impl Default for WriteData {
     fn default() -> Self {
         Self {
+            version: LATEST_VERSION,
+            game_changelist: Default::default(),
+
             map: "Unknown".to_string(),
             author: Default::default(),
             description: Default::default(),
             save_time: Utc::now(),
+            brick_count: Default::default(),
 
             mods: Default::default(),
             brick_assets: Default::default(),
@@ -63,14 +76,32 @@ impl Default for WriteData {
             materials: Default::default(),
             brick_owners: Default::default(),
 
+            screenshot: Default::default(),
             bricks: Default::default(),
         }
     }
 }
 
 /// Write a save file consisting of `data` to `w`.
-pub fn write_save(w: &mut impl Write, data: &WriteData) -> io::Result<()> {
-    if data.bricks.len() > i32::max_value() as usize {
+pub fn write_save<ScreenshotData>(
+    w: &mut impl Write,
+    data: &WriteData<ScreenshotData>,
+) -> io::Result<()> {
+    if data.version != LATEST_VERSION {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Version not supported",
+        ));
+    }
+    if let Some(brick_count) = data.brick_count {
+        if brick_count > i32::MAX as u32 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Brick count out of range",
+            ));
+        }
+    }
+    if data.bricks.len() > i32::MAX as usize {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "Brick count out of range",
@@ -78,7 +109,7 @@ pub fn write_save(w: &mut impl Write, data: &WriteData) -> io::Result<()> {
     }
 
     w.write_all(&MAGIC)?;
-    w.write_u16::<LittleEndian>(LATEST_VERSION)?;
+    w.write_u16::<LittleEndian>(data.version.into())?;
 
     let mut s = Compressed::new();
     write_string(&mut s, &data.map)?;
@@ -86,7 +117,9 @@ pub fn write_save(w: &mut impl Write, data: &WriteData) -> io::Result<()> {
     write_string(&mut s, &data.description)?;
     write_uuid(&mut s, &data.author.id)?;
     write_date_time(&mut s, data.save_time)?;
-    s.write_i32::<LittleEndian>(data.bricks.len() as i32)?;
+    s.write_i32::<LittleEndian>(
+        data.brick_count.unwrap_or_else(|| data.bricks.len() as u32) as i32
+    )?;
     s.finish(w)?;
 
     let mut s = Compressed::new();

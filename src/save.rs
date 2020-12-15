@@ -109,7 +109,10 @@ pub struct User {
 
 impl Default for User {
     fn default() -> Self {
-        Self { id: Uuid::nil(), name: "Unknown".to_string() }
+        Self {
+            id: Uuid::nil(),
+            name: "Unknown".to_string(),
+        }
     }
 }
 
