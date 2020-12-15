@@ -49,6 +49,25 @@ pub struct WriteData {
     pub bricks: Vec<Brick>,
 }
 
+impl Default for WriteData {
+    fn default() -> Self {
+        Self {
+            map: "Unknown".to_string(),
+            author: Default::default(),
+            description: Default::default(),
+            save_time: Utc::now(),
+
+            mods: Default::default(),
+            brick_assets: Default::default(),
+            colors: Default::default(),
+            materials: Default::default(),
+            brick_owners: Default::default(),
+
+            bricks: Default::default(),
+        }
+    }
+}
+
 /// Write a save file consisting of `data` to `w`.
 pub fn write_save(w: &mut impl Write, data: &WriteData) -> io::Result<()> {
     if data.bricks.len() > i32::max_value() as usize {
