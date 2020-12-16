@@ -465,7 +465,7 @@ fn read_compressed(r: &mut impl Read) -> io::Result<impl Read> {
         r.read_exact(&mut compressed)?;
         let mut decoder = zlib::Decoder::new(&compressed[..])?;
         let mut uncompressed = vec![0; uncompressed_size as usize];
-        decoder.read_exact(&mut uncompressed).unwrap();
+        decoder.read_exact(&mut uncompressed)?;
         Ok(Cursor::new(uncompressed))
     }
 }
